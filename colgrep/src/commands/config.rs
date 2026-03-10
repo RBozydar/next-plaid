@@ -103,8 +103,21 @@ pub fn cmd_config(
     max_recursion_depth: Option<usize>,
     verbose: bool,
     no_verbose: bool,
+    add_ignore: Vec<String>,
+    remove_ignore: Vec<String>,
+    add_force_include: Vec<String>,
+    remove_force_include: Vec<String>,
+    clear_ignore: bool,
+    clear_force_include: bool,
 ) -> Result<()> {
     let mut config = Config::load()?;
+
+    let has_ignore_changes = !add_ignore.is_empty()
+        || !remove_ignore.is_empty()
+        || !add_force_include.is_empty()
+        || !remove_force_include.is_empty()
+        || clear_ignore
+        || clear_force_include;
 
     // If no options provided, show current config
     if default_k.is_none()
@@ -117,6 +130,7 @@ pub fn cmd_config(
         && max_recursion_depth.is_none()
         && !verbose
         && !no_verbose
+        && !has_ignore_changes
     {
         println!("Current configuration:");
         println!();
@@ -189,6 +203,22 @@ pub fn cmd_config(
             println!("  max-depth:   {} (default)", DEFAULT_MAX_RECURSION_DEPTH);
         }
 
+        // Extra ignore patterns
+        let extra = config.get_extra_ignore();
+        if extra.is_empty() {
+            println!("  ignore:      (none, using defaults only)");
+        } else {
+            println!("  ignore:      {}", extra.join(", "));
+        }
+
+        // Force-include patterns
+        let fi = config.get_force_include();
+        if fi.is_empty() {
+            println!("  force-incl:  (none)");
+        } else {
+            println!("  force-incl:  {}", fi.join(", "));
+        }
+
         println!();
         println!("Use --k or --n to set values. Use 0 to reset to default.");
         println!("Use --fp32 or --int8 to change model precision.");
@@ -199,6 +229,8 @@ pub fn cmd_config(
             "Use --max-recursion-depth to set parser recursion guard. Use 0 to reset to default."
         );
         println!("Use --verbose or --no-verbose to set default output mode.");
+        println!("Use --ignore/--no-ignore to add/remove extra ignore patterns. --clear-ignore to reset.");
+        println!("Use --force-include/--no-force-include to add/remove force-include patterns. --clear-force-include to reset.");
         return Ok(());
     }
 
@@ -303,6 +335,46 @@ pub fn cmd_config(
     } else if no_verbose {
         config.clear_verbose();
         println!("✅ Disabled verbose output (compact mode is now default)");
+        changed = true;
+    }
+
+    // Handle extra ignore patterns
+    if clear_ignore {
+        config.clear_extra_ignore();
+        println!("✅ Cleared all extra ignore patterns (using defaults only)");
+        changed = true;
+    }
+    for pattern in &add_ignore {
+        config.add_extra_ignore(pattern);
+        println!("✅ Added ignore pattern: {}", pattern);
+        changed = true;
+    }
+    for pattern in &remove_ignore {
+        if config.remove_extra_ignore(pattern) {
+            println!("✅ Removed ignore pattern: {}", pattern);
+        } else {
+            println!("⚠️  Ignore pattern not found: {}", pattern);
+        }
+        changed = true;
+    }
+
+    // Handle force-include patterns
+    if clear_force_include {
+        config.clear_force_include();
+        println!("✅ Cleared all force-include patterns");
+        changed = true;
+    }
+    for pattern in &add_force_include {
+        config.add_force_include(pattern);
+        println!("✅ Added force-include pattern: {}", pattern);
+        changed = true;
+    }
+    for pattern in &remove_force_include {
+        if config.remove_force_include(pattern) {
+            println!("✅ Removed force-include pattern: {}", pattern);
+        } else {
+            println!("⚠️  Force-include pattern not found: {}", pattern);
+        }
         changed = true;
     }
 

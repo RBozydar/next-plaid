@@ -208,6 +208,24 @@ EXAMPLES:
     # Reset to defaults (unset)
     colgrep settings --k 0 --n 0
 
+    # Add extra ignore patterns (on top of built-in defaults)
+    colgrep settings --ignore generated --ignore \"*.pb.go\"
+
+    # Remove an extra ignore pattern
+    colgrep settings --no-ignore generated
+
+    # Clear all extra ignore patterns (revert to defaults only)
+    colgrep settings --clear-ignore
+
+    # Force-include files/dirs that are normally ignored
+    colgrep settings --force-include .vscode --force-include vendor/internal
+
+    # Remove a force-include pattern
+    colgrep settings --no-force-include .vscode
+
+    # Clear all force-include patterns
+    colgrep settings --clear-force-include
+
 NOTES:
     • Values are stored in ~/.config/colgrep/config.json
     • Use 0 to reset a value to its default
@@ -216,7 +234,11 @@ NOTES:
     • FP32 (full-precision) is the default
     • Pool factor 2 (default) reduces index size by ~50%. Use 1 to disable pooling
     • Parallel sessions default to CPU count. Batch-size 1 (default) maximizes throughput
-    • Parser recursion depth defaults to 1024. Increase only if needed for deep ASTs";
+    • Parser recursion depth defaults to 1024. Increase only if needed for deep ASTs
+    • Extra ignore patterns add to the built-in defaults (node_modules, .git, target, etc.)
+    • Force-include patterns override both built-in and extra ignore rules
+    • Patterns match directory/file names (e.g., \".vscode\") or path prefixes (e.g., \"vendor/internal\")
+    • Suffix patterns with * are supported (e.g., \"*.pb.go\")";
 
 #[derive(Parser)]
 #[command(
@@ -550,5 +572,33 @@ pub enum Commands {
         /// Disable verbose output (show compact filepath:lines format, this is the default)
         #[arg(long = "no-verbose", conflicts_with = "verbose")]
         no_verbose: bool,
+
+        /// Add patterns to ignore during indexing (on top of defaults)
+        /// Can be repeated. Examples: --ignore generated --ignore "*.pb.go"
+        #[arg(long = "ignore", value_name = "PATTERN")]
+        add_ignore: Vec<String>,
+
+        /// Remove patterns from the extra ignore list
+        /// Can be repeated. Examples: --no-ignore generated
+        #[arg(long = "no-ignore", value_name = "PATTERN")]
+        remove_ignore: Vec<String>,
+
+        /// Add patterns to force-include even if normally ignored
+        /// Can be repeated. Examples: --force-include .vscode --force-include vendor/internal
+        #[arg(long = "force-include", value_name = "PATTERN")]
+        add_force_include: Vec<String>,
+
+        /// Remove patterns from the force-include list
+        /// Can be repeated. Examples: --no-force-include .vscode
+        #[arg(long = "no-force-include", value_name = "PATTERN")]
+        remove_force_include: Vec<String>,
+
+        /// Clear all custom ignore patterns (revert to defaults only)
+        #[arg(long = "clear-ignore")]
+        clear_ignore: bool,
+
+        /// Clear all force-include patterns
+        #[arg(long = "clear-force-include")]
+        clear_force_include: bool,
     },
 }

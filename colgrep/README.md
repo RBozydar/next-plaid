@@ -177,6 +177,8 @@ colgrep --json "auth" | jq '.[] | .unit.file'
 | `colgrep clear --all`    | Clear all indexes                      |
 | `colgrep set-model <ID>` | Change the default ColBERT model       |
 | `colgrep settings`       | View or modify configuration           |
+| `colgrep settings --ignore` | Add extra ignore patterns (persistent) |
+| `colgrep settings --force-include` | Force-include normally ignored paths |
 | `colgrep --stats`        | Show search statistics for all indexes |
 
 ---
@@ -217,6 +219,42 @@ colgrep settings --verbose
 # Reset a value to default (pass 0)
 colgrep settings --k 0 --n 0
 ```
+
+### Custom Ignore & Force-Include
+
+By default, colgrep ignores common non-source directories (`node_modules`, `.git`, `target`, `vendor`, `build`, etc.) and hidden files. You can customize this behavior persistently across sessions:
+
+```bash
+# Add extra patterns to ignore (on top of built-in defaults)
+colgrep settings --ignore generated --ignore "*.pb.go"
+
+# Remove an extra ignore pattern
+colgrep settings --no-ignore generated
+
+# Clear all extra ignore patterns (revert to defaults only)
+colgrep settings --clear-ignore
+
+# Force-include files/dirs that are normally ignored
+colgrep settings --force-include .vscode
+colgrep settings --force-include vendor/internal
+
+# Remove a force-include pattern
+colgrep settings --no-force-include .vscode
+
+# Clear all force-include patterns
+colgrep settings --clear-force-include
+```
+
+**Pattern syntax:**
+
+| Pattern            | Matches                                                |
+| ------------------ | ------------------------------------------------------ |
+| `generated`        | Any directory or file named `generated`                |
+| `*.pb.go`          | Files ending in `.pb.go`                               |
+| `.vscode`          | The `.vscode` directory (normally hidden = ignored)    |
+| `vendor/internal`  | The `vendor/internal` path prefix specifically         |
+
+Force-include takes priority over both built-in and extra ignore rules, so you can selectively un-ignore specific paths. These settings are stored in `~/.config/colgrep/config.json` and apply to all projects.
 
 ### Change Model
 
@@ -557,17 +595,18 @@ Lookup order:
 
 ```bibtex
 @software{next-plaid,
-  title  = {NextPlaid, ColGREP: Multi-vector search, from database to coding agents.},
-  url    = {https://github.com/lightonai/next-plaid},
-  author = {Sourty, Raphaël},
-  year   = {2026},
+  title        = {NextPlaid, ColGREP: Multi-vector search, from database to coding agents.},
+  url          = {https://github.com/lightonai/next-plaid},
+  author       = {Sourty, Rapha\"{e}l},
+  contributors = {Dinaburg, Artem and Carron, Igor and Hsu, Chao-Chun (Joe) and Weitekamp, Raymond and R\k{a}czka, Szymon and Motliuk, Mark},
+  year         = {2026},
 }
 
 @misc{LateOn-Code,
-title  = {LateOn-Code: a Family of State-Of-The-Art Late Interaction Code Retrieval Models},
-author = {Chaffin, Antoine},
-url    = {https://huggingface.co/collections/lightonai/lateon-code},
-year   = {2026}
+  title  = {LateOn-Code: a Family of State-Of-The-Art Late Interaction Code Retrieval Models},
+  author = {Chaffin, Antoine},
+  url    = {https://huggingface.co/collections/lightonai/lateon-code},
+  year   = {2026}
 }
 ```
 

@@ -329,6 +329,7 @@ jobs:
         run: sleep 30
       - name: Publish colgrep
         run: cargo publish -p colgrep --no-verify
+        continue-on-error: true # May already be published
 
   announce:
     needs:

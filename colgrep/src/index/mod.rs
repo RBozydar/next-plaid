@@ -636,6 +636,11 @@ impl IndexBuilder {
             builder.build().ok()
         };
 
+        // Load user-configured ignore/include overrides
+        let config = crate::config::Config::load().unwrap_or_default();
+        let extra_ignore = config.extra_ignore;
+        let force_include = config.force_include;
+
         // Determine which files need indexing (new or changed)
         let mut files_added = Vec::new();
         let mut files_changed = Vec::new();
@@ -655,7 +660,7 @@ impl IndexBuilder {
             // Skip files in ignored directories (same filtering as scan_files)
             // Use the relative path so hidden-directory filtering doesn't reject
             // ancestor components of the project root itself.
-            if should_ignore(path) {
+            if should_ignore(path, &extra_ignore, &force_include) {
                 continue;
             }
 
@@ -1400,6 +1405,11 @@ impl IndexBuilder {
     }
 
     fn scan_files(&self, languages: Option<&[Language]>) -> Result<(Vec<PathBuf>, usize)> {
+        // Load user-configured ignore/include overrides from persistent config
+        let config = crate::config::Config::load().unwrap_or_default();
+        let extra_ignore = config.extra_ignore.clone();
+        let force_include = config.force_include.clone();
+
         let project_root = self.project_root.clone();
         let walker = WalkBuilder::new(&self.project_root)
             .hidden(false) // Handle hidden files manually in should_ignore (with .github exception)
@@ -1411,8 +1421,8 @@ impl IndexBuilder {
                 // so hidden-directory filtering must not reject ancestor path components.
                 match entry.path().strip_prefix(&project_root) {
                     Ok(rel) if rel.as_os_str().is_empty() => true, // root entry itself
-                    Ok(rel) => !should_ignore(rel),
-                    Err(_) => !should_ignore(entry.path()), // fallback (shouldn't happen)
+                    Ok(rel) => !should_ignore(rel, &extra_ignore, &force_include),
+                    Err(_) => !should_ignore(entry.path(), &extra_ignore, &force_include), // fallback (shouldn't happen)
                 }
             })
             .build();
@@ -1591,12 +1601,44 @@ pub fn path_contains_ignored_dir(path: &Path) -> Option<&'static str> {
     None
 }
 
-/// Check if a path should be ignored
-fn should_ignore(path: &Path) -> bool {
+/// Check if a path should be ignored, considering user-configured overrides.
+///
+/// `extra_ignore` - additional patterns to ignore (on top of IGNORED_DIRS)
+/// `force_include` - patterns that override ignore rules (both default and extra)
+///
+/// Force-include patterns match against the full relative path as well as individual
+/// components, supporting both directory names (e.g., ".vscode") and path patterns
+/// (e.g., "vendor/internal").
+fn should_ignore(path: &Path, extra_ignore: &[String], force_include: &[String]) -> bool {
+    let path_str = path.to_string_lossy();
+
+    // Check force-include against the full path first
+    for pattern in force_include {
+        if let Some(suffix) = pattern.strip_prefix('*') {
+            if path_str.ends_with(suffix) {
+                return false;
+            }
+        } else if path_str == *pattern || path_str.starts_with(&format!("{}/", pattern)) {
+            return false;
+        }
+    }
+
     // Check each component of the path
     for component in path.components() {
         if let std::path::Component::Normal(name) = component {
             let name_str = name.to_string_lossy();
+
+            // Check force-include for this component
+            let force_included = force_include.iter().any(|p| {
+                if let Some(suffix) = p.strip_prefix('*') {
+                    name_str.ends_with(suffix)
+                } else {
+                    name_str.as_ref() == p
+                }
+            });
+            if force_included {
+                continue; // Skip ignore checks for this component
+            }
 
             // Skip hidden files/directories (starting with .) except allowed ones
             if name_str.starts_with('.')
@@ -1606,13 +1648,24 @@ fn should_ignore(path: &Path) -> bool {
                 return true;
             }
 
+            // Check default ignore patterns
             for pattern in IGNORED_DIRS {
                 if let Some(suffix) = pattern.strip_prefix('*') {
-                    // Suffix match (e.g., "*.egg-info")
                     if name_str.ends_with(suffix) {
                         return true;
                     }
                 } else if name_str == *pattern {
+                    return true;
+                }
+            }
+
+            // Check user-configured extra ignore patterns
+            for pattern in extra_ignore {
+                if let Some(suffix) = pattern.strip_prefix('*') {
+                    if name_str.ends_with(suffix) {
+                        return true;
+                    }
+                } else if name_str.as_ref() == pattern {
                     return true;
                 }
             }
@@ -3245,33 +3298,156 @@ mod tests {
 
     #[test]
     fn test_should_ignore_relative_hidden_subdir() {
+        let empty: &[String] = &[];
         // Hidden subdirectories inside the project should be ignored
-        assert!(should_ignore(Path::new(".hidden/foo.rs")));
-        assert!(should_ignore(Path::new("src/.secret/bar.rs")));
+        assert!(should_ignore(Path::new(".hidden/foo.rs"), empty, empty));
+        assert!(should_ignore(Path::new("src/.secret/bar.rs"), empty, empty));
         // But allowed hidden dirs are fine
-        assert!(!should_ignore(Path::new(".github/workflows/ci.yml")));
+        assert!(!should_ignore(
+            Path::new(".github/workflows/ci.yml"),
+            empty,
+            empty
+        ));
     }
 
     #[test]
     fn test_should_ignore_does_not_reject_dotprefixed_root_when_relative() {
-        // When called with a *relative* path (no ancestors of project root),
-        // files at the top level of the project are not rejected.
-        // This is the key fix: scan_files now strips the project root before
-        // calling should_ignore, so a project root like ~/.pi/agent/extensions/
-        // no longer causes the hidden-dir filter to reject everything.
-        assert!(!should_ignore(Path::new("index.ts")));
-        assert!(!should_ignore(Path::new("src/lib.rs")));
-        assert!(!should_ignore(Path::new("package.json")));
+        let empty: &[String] = &[];
+        assert!(!should_ignore(Path::new("index.ts"), empty, empty));
+        assert!(!should_ignore(Path::new("src/lib.rs"), empty, empty));
+        assert!(!should_ignore(Path::new("package.json"), empty, empty));
     }
 
     #[test]
     fn test_should_ignore_absolute_dotprefixed_ancestors() {
-        // Demonstrate the old bug: should_ignore on a full absolute path
-        // with hidden ancestors would incorrectly reject the file.
-        // After the fix, scan_files no longer passes absolute paths.
+        let empty: &[String] = &[];
         let path = Path::new("/home/user/.pi/agent/extensions/index.ts");
-        // This WOULD be rejected (the .pi component is hidden) — which is
-        // exactly why scan_files must strip the project root first.
-        assert!(should_ignore(path));
+        assert!(should_ignore(path, empty, empty));
+    }
+
+    #[test]
+    fn test_should_ignore_extra_ignore_patterns() {
+        let empty: &[String] = &[];
+        let extra = vec!["generated".to_string(), "*.pb.go".to_string()];
+
+        // Extra ignore patterns should be respected
+        assert!(should_ignore(
+            Path::new("src/generated/types.rs"),
+            &extra,
+            empty
+        ));
+        assert!(should_ignore(Path::new("api/service.pb.go"), &extra, empty));
+        // Normal files unaffected
+        assert!(!should_ignore(Path::new("src/main.rs"), &extra, empty));
+    }
+
+    #[test]
+    fn test_should_ignore_force_include_overrides_default() {
+        let empty: &[String] = &[];
+        let force = vec![".vscode".to_string()];
+
+        // .vscode is normally ignored (hidden dir not in ALLOWED_HIDDEN_DIRS)
+        assert!(should_ignore(
+            Path::new(".vscode/settings.json"),
+            empty,
+            empty
+        ));
+        // But with force-include, it's allowed
+        assert!(!should_ignore(
+            Path::new(".vscode/settings.json"),
+            empty,
+            &force
+        ));
+    }
+
+    #[test]
+    fn test_should_ignore_force_include_overrides_ignored_dir() {
+        let empty: &[String] = &[];
+        let force = vec!["vendor".to_string()];
+
+        // vendor is in IGNORED_DIRS by default
+        assert!(should_ignore(Path::new("vendor/lib/util.go"), empty, empty));
+        // But force-include overrides that
+        assert!(!should_ignore(
+            Path::new("vendor/lib/util.go"),
+            empty,
+            &force
+        ));
+    }
+
+    #[test]
+    fn test_should_ignore_force_include_overrides_extra_ignore() {
+        let extra = vec!["generated".to_string()];
+        let force = vec!["generated".to_string()];
+
+        // Extra ignore says ignore "generated", but force-include overrides
+        assert!(!should_ignore(
+            Path::new("src/generated/types.rs"),
+            &extra,
+            &force
+        ));
+    }
+
+    #[test]
+    fn test_should_ignore_force_include_path_prefix() {
+        let empty: &[String] = &[];
+        let force = vec!["vendor/internal".to_string()];
+
+        // Full path prefix match: vendor/internal/* is included
+        assert!(!should_ignore(
+            Path::new("vendor/internal/lib.go"),
+            empty,
+            &force
+        ));
+        // But vendor/external is still ignored (vendor is in IGNORED_DIRS)
+        assert!(should_ignore(
+            Path::new("vendor/external/lib.go"),
+            empty,
+            &force
+        ));
+    }
+
+    #[test]
+    fn test_should_ignore_force_include_suffix_pattern() {
+        let empty: &[String] = &[];
+        let force = vec!["*.egg-info".to_string()];
+
+        // *.egg-info is in IGNORED_DIRS by default
+        assert!(should_ignore(
+            Path::new("mypackage.egg-info/PKG-INFO"),
+            empty,
+            empty
+        ));
+        // Force-include with suffix pattern overrides it
+        assert!(!should_ignore(
+            Path::new("mypackage.egg-info/PKG-INFO"),
+            empty,
+            &force
+        ));
+    }
+
+    #[test]
+    fn test_should_ignore_combined_extra_and_force() {
+        let extra = vec!["snapshots".to_string()];
+        let force = vec![".idea".to_string()];
+
+        // snapshots is extra-ignored
+        assert!(should_ignore(
+            Path::new("tests/snapshots/test1.snap"),
+            &extra,
+            &force
+        ));
+        // .idea is normally a hidden+ignored dir, but force-included
+        assert!(!should_ignore(
+            Path::new(".idea/workspace.xml"),
+            &extra,
+            &force
+        ));
+        // Normal ignored dirs still work
+        assert!(should_ignore(
+            Path::new("node_modules/foo/bar.js"),
+            &extra,
+            &force
+        ));
     }
 }

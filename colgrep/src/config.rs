@@ -135,6 +135,16 @@ pub struct Config {
     /// Protects against pathological files that would otherwise overflow the stack.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_recursion_depth: Option<usize>,
+
+    /// Extra directory/file patterns to ignore during indexing (on top of defaults)
+    /// e.g., ["generated", "*.pb.go", "migrations"]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub extra_ignore: Vec<String>,
+
+    /// Patterns to force-include even if they would be ignored by defaults
+    /// e.g., [".vscode", "build/generated", "vendor/internal"]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub force_include: Vec<String>,
 }
 
 impl Config {
@@ -315,6 +325,56 @@ impl Config {
     /// Clear max parser recursion depth setting (revert to default).
     pub fn clear_max_recursion_depth(&mut self) {
         self.max_recursion_depth = None;
+    }
+
+    /// Get extra ignore patterns
+    pub fn get_extra_ignore(&self) -> &[String] {
+        &self.extra_ignore
+    }
+
+    /// Add a pattern to extra ignore list
+    pub fn add_extra_ignore(&mut self, pattern: impl Into<String>) {
+        let p = pattern.into();
+        if !self.extra_ignore.contains(&p) {
+            self.extra_ignore.push(p);
+        }
+    }
+
+    /// Remove a pattern from extra ignore list. Returns true if found.
+    pub fn remove_extra_ignore(&mut self, pattern: &str) -> bool {
+        let len = self.extra_ignore.len();
+        self.extra_ignore.retain(|p| p != pattern);
+        self.extra_ignore.len() < len
+    }
+
+    /// Clear all extra ignore patterns
+    pub fn clear_extra_ignore(&mut self) {
+        self.extra_ignore.clear();
+    }
+
+    /// Get force-include patterns
+    pub fn get_force_include(&self) -> &[String] {
+        &self.force_include
+    }
+
+    /// Add a pattern to force-include list
+    pub fn add_force_include(&mut self, pattern: impl Into<String>) {
+        let p = pattern.into();
+        if !self.force_include.contains(&p) {
+            self.force_include.push(p);
+        }
+    }
+
+    /// Remove a pattern from force-include list. Returns true if found.
+    pub fn remove_force_include(&mut self, pattern: &str) -> bool {
+        let len = self.force_include.len();
+        self.force_include.retain(|p| p != pattern);
+        self.force_include.len() < len
+    }
+
+    /// Clear all force-include patterns
+    pub fn clear_force_include(&mut self) {
+        self.force_include.clear();
     }
 }
 
@@ -505,5 +565,122 @@ mod tests {
         // Should be min(cpu_count, 16)
         assert!(sessions >= 1);
         assert!(sessions <= 16);
+    }
+
+    #[test]
+    fn test_extra_ignore_default_empty() {
+        let config = Config::default();
+        assert!(config.get_extra_ignore().is_empty());
+    }
+
+    #[test]
+    fn test_add_extra_ignore() {
+        let mut config = Config::default();
+        config.add_extra_ignore("generated");
+        config.add_extra_ignore("*.pb.go");
+        assert_eq!(config.get_extra_ignore(), &["generated", "*.pb.go"]);
+    }
+
+    #[test]
+    fn test_add_extra_ignore_dedup() {
+        let mut config = Config::default();
+        config.add_extra_ignore("generated");
+        config.add_extra_ignore("generated");
+        assert_eq!(config.get_extra_ignore(), &["generated"]);
+    }
+
+    #[test]
+    fn test_remove_extra_ignore() {
+        let mut config = Config::default();
+        config.add_extra_ignore("generated");
+        config.add_extra_ignore("migrations");
+        assert!(config.remove_extra_ignore("generated"));
+        assert_eq!(config.get_extra_ignore(), &["migrations"]);
+        assert!(!config.remove_extra_ignore("nonexistent"));
+    }
+
+    #[test]
+    fn test_clear_extra_ignore() {
+        let mut config = Config::default();
+        config.add_extra_ignore("a");
+        config.add_extra_ignore("b");
+        config.clear_extra_ignore();
+        assert!(config.get_extra_ignore().is_empty());
+    }
+
+    #[test]
+    fn test_force_include_default_empty() {
+        let config = Config::default();
+        assert!(config.get_force_include().is_empty());
+    }
+
+    #[test]
+    fn test_add_force_include() {
+        let mut config = Config::default();
+        config.add_force_include(".vscode");
+        config.add_force_include("vendor/internal");
+        assert_eq!(config.get_force_include(), &[".vscode", "vendor/internal"]);
+    }
+
+    #[test]
+    fn test_add_force_include_dedup() {
+        let mut config = Config::default();
+        config.add_force_include(".vscode");
+        config.add_force_include(".vscode");
+        assert_eq!(config.get_force_include(), &[".vscode"]);
+    }
+
+    #[test]
+    fn test_remove_force_include() {
+        let mut config = Config::default();
+        config.add_force_include(".vscode");
+        config.add_force_include("build");
+        assert!(config.remove_force_include(".vscode"));
+        assert_eq!(config.get_force_include(), &["build"]);
+        assert!(!config.remove_force_include("nonexistent"));
+    }
+
+    #[test]
+    fn test_clear_force_include() {
+        let mut config = Config::default();
+        config.add_force_include("a");
+        config.add_force_include("b");
+        config.clear_force_include();
+        assert!(config.get_force_include().is_empty());
+    }
+
+    #[test]
+    fn test_ignore_force_include_serialization() {
+        let mut config = Config::default();
+        config.add_extra_ignore("generated");
+        config.add_extra_ignore("*.pb.go");
+        config.add_force_include(".vscode");
+
+        let json = serde_json::to_string_pretty(&config).unwrap();
+        assert!(json.contains("extra_ignore"));
+        assert!(json.contains("generated"));
+        assert!(json.contains("force_include"));
+        assert!(json.contains(".vscode"));
+
+        let deserialized: Config = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.get_extra_ignore(), &["generated", "*.pb.go"]);
+        assert_eq!(deserialized.get_force_include(), &[".vscode"]);
+    }
+
+    #[test]
+    fn test_ignore_force_include_serialization_skips_empty() {
+        let config = Config::default();
+        let json = serde_json::to_string(&config).unwrap();
+        assert!(!json.contains("extra_ignore"));
+        assert!(!json.contains("force_include"));
+    }
+
+    #[test]
+    fn test_ignore_force_include_deserialization_missing() {
+        // Old config files without these fields should work fine
+        let json = r#"{"default_k": 10}"#;
+        let config: Config = serde_json::from_str(json).unwrap();
+        assert!(config.get_extra_ignore().is_empty());
+        assert!(config.get_force_include().is_empty());
     }
 }

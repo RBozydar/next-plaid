@@ -220,6 +220,12 @@ fn main() -> Result<()> {
             max_recursion_depth,
             verbose,
             no_verbose,
+            add_ignore,
+            remove_ignore,
+            add_force_include,
+            remove_force_include,
+            clear_ignore,
+            clear_force_include,
         }) => cmd_config(
             default_k,
             default_n,
@@ -231,6 +237,12 @@ fn main() -> Result<()> {
             max_recursion_depth,
             verbose,
             no_verbose,
+            add_ignore,
+            remove_ignore,
+            add_force_include,
+            remove_force_include,
+            clear_ignore,
+            clear_force_include,
         ),
         None => {
             // Default: run search if query is provided
