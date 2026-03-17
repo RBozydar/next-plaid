@@ -19,6 +19,9 @@ pub use fastkmeans_rs::{FastKMeans, KMeansConfig, KMeansError};
 #[cfg(feature = "cuda")]
 pub use fastkmeans_rs::FastKMeansCuda;
 
+#[cfg(feature = "metal_gpu")]
+pub use fastkmeans_rs::FastKMeansMetal;
+
 /// Configuration for the compute_kmeans function.
 #[derive(Debug, Clone)]
 pub struct ComputeKmeansConfig {
@@ -91,12 +94,12 @@ fn compute_centroids_cpu(
 /// * `embeddings` - The embeddings to cluster, shape `[N, dim]`
 /// * `num_centroids` - Number of centroids to compute
 /// * `config` - Optional custom k-means configuration
-/// * `force_cpu` - Force CPU execution even when CUDA is available
+/// * `force_cpu` - Force CPU execution even when a GPU backend is available
 ///
 /// # Returns
 ///
 /// The centroids array of shape `[num_centroids, dim]`
-#[cfg(not(feature = "cuda"))]
+#[cfg(not(any(feature = "cuda", feature = "metal_gpu")))]
 pub fn compute_centroids(
     embeddings: &ArrayView2<f32>,
     num_centroids: usize,
@@ -108,17 +111,6 @@ pub fn compute_centroids(
 }
 
 /// Compute centroids from a set of embeddings using CUDA (or CPU if force_cpu is true).
-///
-/// # Arguments
-///
-/// * `embeddings` - The embeddings to cluster, shape `[N, dim]`
-/// * `num_centroids` - Number of centroids to compute
-/// * `config` - Optional custom k-means configuration
-/// * `force_cpu` - Force CPU execution even when CUDA is available
-///
-/// # Returns
-///
-/// The centroids array of shape `[num_centroids, dim]`
 #[cfg(feature = "cuda")]
 pub fn compute_centroids(
     embeddings: &ArrayView2<f32>,
@@ -142,6 +134,33 @@ pub fn compute_centroids(
     kmeans
         .centroids()
         .ok_or_else(|| Error::IndexCreation("CUDA K-means did not produce centroids".into()))
+        .map(|c| c.to_owned())
+}
+
+/// Compute centroids from a set of embeddings using Metal GPU (or CPU if force_cpu is true).
+#[cfg(all(feature = "metal_gpu", not(feature = "cuda")))]
+pub fn compute_centroids(
+    embeddings: &ArrayView2<f32>,
+    num_centroids: usize,
+    config: Option<KMeansConfig>,
+    force_cpu: bool,
+) -> Result<Array2<f32>> {
+    let config = config.unwrap_or_else(|| default_config(num_centroids));
+
+    if force_cpu {
+        return compute_centroids_cpu(embeddings, config);
+    }
+
+    let mut kmeans = FastKMeansMetal::with_config(config)
+        .map_err(|e| Error::IndexCreation(format!("Metal K-means initialization failed: {}", e)))?;
+
+    kmeans
+        .train(embeddings)
+        .map_err(|e| Error::IndexCreation(format!("Metal K-means training failed: {}", e)))?;
+
+    kmeans
+        .centroids()
+        .ok_or_else(|| Error::IndexCreation("Metal K-means did not produce centroids".into()))
         .map(|c| c.to_owned())
 }
 
@@ -291,7 +310,7 @@ pub fn compute_kmeans(
     };
 
     // Run k-means (CPU implementation)
-    #[cfg(not(feature = "cuda"))]
+    #[cfg(not(any(feature = "cuda", feature = "metal_gpu")))]
     let centroids = {
         let mut kmeans = FastKMeans::with_config(kmeans_config);
         kmeans
@@ -327,6 +346,32 @@ pub fn compute_kmeans(
         kmeans
             .centroids()
             .ok_or_else(|| Error::IndexCreation("CUDA K-means did not produce centroids".into()))?
+            .to_owned()
+    };
+
+    // Run k-means (Metal GPU with CPU fallback when force_cpu is true)
+    #[cfg(all(feature = "metal_gpu", not(feature = "cuda")))]
+    let centroids = if config.force_cpu {
+        let mut kmeans = FastKMeans::with_config(kmeans_config);
+        kmeans
+            .train(&samples_tensor.view())
+            .map_err(|e| Error::IndexCreation(format!("K-means training failed: {}", e)))?;
+
+        kmeans
+            .centroids()
+            .ok_or_else(|| Error::IndexCreation("K-means did not produce centroids".into()))?
+            .to_owned()
+    } else {
+        let mut kmeans = FastKMeansMetal::with_config(kmeans_config).map_err(|e| {
+            Error::IndexCreation(format!("Metal K-means initialization failed: {}", e))
+        })?;
+        kmeans
+            .train(&samples_tensor.view())
+            .map_err(|e| Error::IndexCreation(format!("Metal K-means training failed: {}", e)))?;
+
+        kmeans
+            .centroids()
+            .ok_or_else(|| Error::IndexCreation("Metal K-means did not produce centroids".into()))?
             .to_owned()
     };
 

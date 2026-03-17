@@ -20,13 +20,13 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            features: "--features openblas"
-            setup: "sudo apt-get update && sudo apt-get install -y libopenblas-dev"
+            features: "--features mkl"
+            setup: ""
           - os: macos-latest
-            features: "--features accelerate,coreml"
+            features: "--features accelerate,coreml,metal_gpu"
             setup: ""
           - os: windows-latest
-            features: "--features directml"
+            features: "--features mkl,directml"
             setup: ""
 
     steps:
