@@ -57,6 +57,8 @@ utoipa-swagger-ui = { version = "9", features = ["axum"] }
 default = []
 openblas = ["next-plaid/openblas"]
 accelerate = ["next-plaid/accelerate"]
+mkl = ["next-plaid/mkl"]
+metal_gpu = ["next-plaid/metal_gpu"]
 model = ["dep:next-plaid-onnx"]
 cuda = ["model", "next-plaid-onnx/cuda", "next-plaid/cuda"]
 

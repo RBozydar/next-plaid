@@ -148,10 +148,16 @@ jobs:
           TARGET="${{ join(matrix.targets, ' ') }}"
           case "$TARGET" in
             *aarch64-apple-darwin*)
-              FEATURES='features = ["coreml", "accelerate"]'
+              FEATURES='features = ["coreml", "accelerate", "metal_gpu"]'
               ;;
             *x86_64-apple-darwin*)
               FEATURES='features = ["accelerate"]'
+              ;;
+            *x86_64-unknown-linux*)
+              FEATURES='features = ["mkl"]'
+              ;;
+            *x86_64-pc-windows*)
+              FEATURES='features = ["directml"]'
               ;;
             *)
               FEATURES=""

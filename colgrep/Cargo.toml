@@ -110,6 +110,9 @@ migraphx = ["next-plaid-onnx/migraphx"]
 # Vector search acceleration (BLAS backends)
 accelerate = ["next-plaid/accelerate"]
 openblas = ["next-plaid/openblas"]
+mkl = ["next-plaid/mkl"]
+# GPU acceleration (Apple Metal)
+metal_gpu = ["next-plaid/metal_gpu"]
 
 [target.'cfg(windows)'.dependencies]
 zip = "2"
