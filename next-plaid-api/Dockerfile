@@ -44,12 +44,14 @@
 # =============================================================================
 FROM debian:bookworm-slim AS chef-cpu
 
+# Install build dependencies (OpenBLAS only needed on aarch64 where MKL is unavailable)
 RUN apt-get update && apt-get install -y \
     curl \
     build-essential \
     pkg-config \
     libssl-dev \
     wget \
+    && if [ "$(uname -m)" = "aarch64" ]; then apt-get install -y libopenblas-dev; fi \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Rust and cargo-chef
@@ -94,9 +96,12 @@ RUN cargo chef prepare --recipe-path recipe.json
 # =============================================================================
 FROM chef-cpu AS builder-cpu
 
+# Select BLAS backend: MKL on x86_64 (statically linked), OpenBLAS on aarch64
+RUN if [ "$(uname -m)" = "x86_64" ]; then echo "mkl" > /tmp/blas_feature; else echo "openblas" > /tmp/blas_feature; fi
+
 # Build dependencies first (this layer is cached if recipe.json doesn't change)
 COPY --from=planner-cpu /app/recipe.json recipe.json
-RUN cargo chef cook --release --recipe-path recipe.json --package next-plaid-api --features "mkl,model"
+RUN cargo chef cook --release --recipe-path recipe.json --package next-plaid-api --features "$(cat /tmp/blas_feature),model"
 
 # Now build the actual application
 COPY Cargo.toml Cargo.lock ./
@@ -105,7 +110,7 @@ COPY next-plaid-api ./next-plaid-api
 COPY next-plaid-onnx ./next-plaid-onnx
 COPY colgrep ./colgrep
 
-RUN cargo build --release --package next-plaid-api --features "mkl,model"
+RUN cargo build --release --package next-plaid-api --features "$(cat /tmp/blas_feature),model"
 
 # =============================================================================
 # Chef stage for CUDA - Install cargo-chef
@@ -177,12 +182,15 @@ FROM debian:bookworm-slim AS runtime-cpu
 
 WORKDIR /app
 
-# Install runtime dependencies (MKL is statically linked, no BLAS runtime needed)
+# Install runtime dependencies
+# MKL is statically linked on x86_64 (no BLAS runtime needed)
+# OpenBLAS is used on aarch64 (needs runtime library)
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     libssl3 \
     libsqlite3-0 \
     curl \
+    && if [ "$(uname -m)" = "aarch64" ]; then apt-get install -y libopenblas0; fi \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
@@ -214,7 +222,9 @@ EXPOSE 8080
 # Default environment variables
 ENV RUST_LOG=info
 ENV INDEX_DIR=/data/indices
-# MKL is statically linked with sequential threading (no thread explosion risk)
+# x86_64: MKL statically linked (sequential, no thread explosion)
+# aarch64: OpenBLAS with single thread to avoid contention with rayon
+ENV OPENBLAS_NUM_THREADS=1
 # Memory-mapped indices are always enabled for efficient memory usage
 # Set HF_MODEL_ID to auto-download model from HuggingFace Hub
 # Example: ENV HF_MODEL_ID=lightonai/GTE-ModernColBERT-v1
