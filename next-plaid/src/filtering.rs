@@ -702,13 +702,17 @@ pub fn create(index_path: &str, metadata: &[Value], doc_ids: &[i64]) -> Result<u
 
     // Prepare INSERT statement
     let placeholders: Vec<&str> = std::iter::repeat_n("?", columns.len() + 1).collect();
-    let col_names: Vec<String> = columns.iter().map(|c| format!("\"{}\"", c)).collect();
-    let insert_sql = format!(
-        "INSERT INTO METADATA (\"{}\", {}) VALUES ({})",
-        SUBSET_COLUMN,
-        col_names.join(", "),
-        placeholders.join(", ")
-    );
+    let insert_sql = if columns.is_empty() {
+        format!("INSERT INTO METADATA (\"{}\") VALUES (?)", SUBSET_COLUMN,)
+    } else {
+        let col_names: Vec<String> = columns.iter().map(|c| format!("\"{}\"", c)).collect();
+        format!(
+            "INSERT INTO METADATA (\"{}\", {}) VALUES ({})",
+            SUBSET_COLUMN,
+            col_names.join(", "),
+            placeholders.join(", ")
+        )
+    };
 
     // Insert rows
     let mut stmt = conn.prepare(&insert_sql)?;
@@ -826,13 +830,17 @@ pub fn update(index_path: &str, metadata: &[Value], doc_ids: &[i64]) -> Result<u
 
     // Prepare INSERT statement
     let placeholders: Vec<&str> = std::iter::repeat_n("?", all_columns.len() + 1).collect();
-    let col_names: Vec<String> = all_columns.iter().map(|c| format!("\"{}\"", c)).collect();
-    let insert_sql = format!(
-        "INSERT INTO METADATA (\"{}\", {}) VALUES ({})",
-        SUBSET_COLUMN,
-        col_names.join(", "),
-        placeholders.join(", ")
-    );
+    let insert_sql = if all_columns.is_empty() {
+        format!("INSERT INTO METADATA (\"{}\") VALUES (?)", SUBSET_COLUMN,)
+    } else {
+        let col_names: Vec<String> = all_columns.iter().map(|c| format!("\"{}\"", c)).collect();
+        format!(
+            "INSERT INTO METADATA (\"{}\", {}) VALUES ({})",
+            SUBSET_COLUMN,
+            col_names.join(", "),
+            placeholders.join(", ")
+        )
+    };
 
     // Insert rows
     let mut stmt = conn.prepare(&insert_sql)?;
@@ -1892,5 +1900,41 @@ mod tests {
         // SQL injection should be rejected
         let result = get(path, Some("1=1 UNION SELECT * FROM users"), &[], None);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_create_with_empty_metadata_objects() {
+        let dir = setup_test_dir();
+        let path = dir.path().to_str().unwrap();
+
+        let metadata = vec![json!({}), json!({})];
+        let doc_ids: Vec<i64> = vec![0, 1];
+
+        let result = create(path, &metadata, &doc_ids).unwrap();
+        assert_eq!(result, 2);
+        assert!(exists(path));
+        assert_eq!(count(path).unwrap(), 2);
+
+        // Verify rows are retrievable
+        let all = get(path, None, &[], None).unwrap();
+        assert_eq!(all.len(), 2);
+    }
+
+    #[test]
+    fn test_update_with_empty_metadata_objects() {
+        let dir = setup_test_dir();
+        let path = dir.path().to_str().unwrap();
+
+        // Create initial index with empty metadata
+        let metadata = vec![json!({})];
+        let doc_ids: Vec<i64> = vec![0];
+        create(path, &metadata, &doc_ids).unwrap();
+
+        // Update with more empty metadata
+        let new_metadata = vec![json!({})];
+        let new_doc_ids: Vec<i64> = vec![1];
+        let result = update(path, &new_metadata, &new_doc_ids).unwrap();
+        assert_eq!(result, 1);
+        assert_eq!(count(path).unwrap(), 2);
     }
 }
