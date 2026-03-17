@@ -70,3 +70,7 @@ mkl = [
 ]
 metal_gpu = ["fastkmeans-rs/metal_gpu"]
 cuda = ["fastkmeans-rs/cuda", "dep:cudarc"]
+
+[[bench]]
+name = "cpu_vs_cuda"
+harness = false
