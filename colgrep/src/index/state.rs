@@ -1,6 +1,6 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
@@ -14,6 +14,9 @@ pub struct IndexState {
     #[serde(default)]
     pub cli_version: String,
     pub files: HashMap<PathBuf, FileInfo>,
+    /// Files that failed to parse (e.g. invalid UTF-8) — skipped on future runs
+    #[serde(default)]
+    pub ignored_files: HashSet<PathBuf>,
     /// Number of searches performed against this index
     #[serde(default)]
     pub search_count: u64,
@@ -134,6 +137,7 @@ mod tests {
         let state = IndexState {
             cli_version: "1.0.0".to_string(),
             files,
+            ignored_files: HashSet::new(),
             search_count: 0,
         };
 
@@ -181,6 +185,32 @@ mod tests {
 
         // CLI version should be set after saving
         assert!(!loaded.cli_version.is_empty());
+    }
+
+    #[test]
+    fn test_ignored_files_persisted_to_disk() {
+        let temp_dir = TempDir::new().unwrap();
+
+        let mut state = IndexState::default();
+        state
+            .ignored_files
+            .insert(PathBuf::from("bad/binary_file.hpp"));
+        state
+            .ignored_files
+            .insert(PathBuf::from("vendor/nonascii.py"));
+
+        // Save to disk
+        state.save(temp_dir.path()).unwrap();
+
+        // Load from disk and verify ignored files survived the round-trip
+        let loaded = IndexState::load(temp_dir.path()).unwrap();
+        assert_eq!(loaded.ignored_files.len(), 2);
+        assert!(loaded
+            .ignored_files
+            .contains(&PathBuf::from("bad/binary_file.hpp")));
+        assert!(loaded
+            .ignored_files
+            .contains(&PathBuf::from("vendor/nonascii.py")));
     }
 
     #[test]
