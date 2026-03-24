@@ -226,6 +226,11 @@ impl IndexBuilder {
             }
             eprintln!("📂 Building index...");
 
+            #[cfg(feature = "cuda")]
+            if !crate::onnx_runtime::is_cudnn_available() {
+                eprintln!("📂 cuDNN not found, encoding will use CPU.");
+            }
+
             // Use runtime default for batch size (respects cuDNN availability)
             let batch = self
                 .batch_size
