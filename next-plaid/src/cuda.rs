@@ -19,7 +19,7 @@ use cudarc::cublas::{CudaBlas, Gemm, GemmConfig};
 use cudarc::driver::{
     CudaContext as CudarcContext, CudaFunction, CudaSlice, CudaStream, LaunchConfig, PushKernelArg,
 };
-use cudarc::nvrtc::compile_ptx;
+use cudarc::nvrtc::{compile_ptx_with_opts, CompileOptions};
 use ndarray::{Array1, ArrayView2};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -234,8 +234,20 @@ extern "C" __global__ void gather_subtract_kernel(
 "#;
 
 /// Compile and load CUDA kernels, returning the kernel functions.
+///
+/// Targets the device's actual compute capability to avoid
+/// `CUDA_ERROR_UNSUPPORTED_PTX_VERSION` when the NVRTC compiler is newer
+/// than the installed driver.
 fn load_kernels(device: &Arc<CudarcContext>) -> Result<(CudaFunction, CudaFunction)> {
-    let ptx = compile_ptx(CUDA_KERNELS)
+    let opts = match device.compute_capability() {
+        Ok((major, minor)) => CompileOptions {
+            options: vec![format!("--gpu-architecture=sm_{}{}", major, minor)],
+            ..Default::default()
+        },
+        Err(_) => CompileOptions::default(),
+    };
+
+    let ptx = compile_ptx_with_opts(CUDA_KERNELS, opts)
         .map_err(|e| Error::Codec(format!("Failed to compile CUDA kernels: {:?}", e)))?;
 
     let module = device
