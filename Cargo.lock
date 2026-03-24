@@ -1151,9 +1151,7 @@ checksum = "7360491ce676a36bf9bb3c56c1aa791658183a54d2744120f27285738d90465a"
 
 [[package]]
 name = "fastkmeans-rs"
-version = "1.0.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a69d32f9021de2e8d8864a957fb53714a2044d7e79c6ecd88e5f2b97650ee9a"
+version = "1.0.5"
 dependencies = [
  "accelerate-src",
  "blas-src 0.10.0",
