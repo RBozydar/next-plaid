@@ -306,12 +306,12 @@ pub fn resolve_context_lines(cli_n: Option<usize>, default: usize) -> usize {
     default
 }
 
-/// Resolve relative_paths: saved config > default (false = absolute paths)
+/// Resolve relative_paths: saved config > default (true = relative paths)
 pub fn resolve_relative_paths() -> bool {
     if let Ok(config) = Config::load() {
         return config.use_relative_paths();
     }
-    false
+    true
 }
 
 /// Format a path for display, using relative or absolute based on config.
