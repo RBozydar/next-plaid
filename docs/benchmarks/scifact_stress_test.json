@@ -59,7 +59,7 @@
       "cycle": 4,
       "count": 30,
       "expected": 160,
-      "actual": 165
+      "actual": 167
     },
     {
       "op": "add",
@@ -73,7 +73,7 @@
       "cycle": 5,
       "count": 30,
       "expected": 200,
-      "actual": 212
+      "actual": 210
     },
     {
       "op": "add",
@@ -87,7 +87,7 @@
       "cycle": 6,
       "count": 30,
       "expected": 240,
-      "actual": 240
+      "actual": 254
     },
     {
       "op": "add",
@@ -101,7 +101,7 @@
       "cycle": 7,
       "count": 30,
       "expected": 280,
-      "actual": 280
+      "actual": 296
     },
     {
       "op": "add",
@@ -115,7 +115,7 @@
       "cycle": 8,
       "count": 30,
       "expected": 320,
-      "actual": 320
+      "actual": 339
     },
     {
       "op": "add",
@@ -129,7 +129,7 @@
       "cycle": 9,
       "count": 30,
       "expected": 360,
-      "actual": 360
+      "actual": 379
     },
     {
       "op": "add",
@@ -143,7 +143,7 @@
       "cycle": 10,
       "count": 30,
       "expected": 400,
-      "actual": 400
+      "actual": 420
     },
     {
       "op": "add",
@@ -157,7 +157,7 @@
       "cycle": 11,
       "count": 30,
       "expected": 440,
-      "actual": 443
+      "actual": 461
     },
     {
       "op": "add",
@@ -171,7 +171,7 @@
       "cycle": 12,
       "count": 30,
       "expected": 480,
-      "actual": 482
+      "actual": 502
     },
     {
       "op": "add",
@@ -185,7 +185,7 @@
       "cycle": 13,
       "count": 30,
       "expected": 520,
-      "actual": 520
+      "actual": 542
     },
     {
       "op": "add",
@@ -199,7 +199,7 @@
       "cycle": 14,
       "count": 30,
       "expected": 560,
-      "actual": 565
+      "actual": 583
     },
     {
       "op": "add",
@@ -213,7 +213,7 @@
       "cycle": 15,
       "count": 30,
       "expected": 600,
-      "actual": 600
+      "actual": 623
     },
     {
       "op": "add",
@@ -227,7 +227,7 @@
       "cycle": 16,
       "count": 30,
       "expected": 640,
-      "actual": 640
+      "actual": 663
     },
     {
       "op": "add",
@@ -241,7 +241,7 @@
       "cycle": 17,
       "count": 30,
       "expected": 680,
-      "actual": 694
+      "actual": 704
     },
     {
       "op": "add",
@@ -255,7 +255,7 @@
       "cycle": 18,
       "count": 30,
       "expected": 720,
-      "actual": 728
+      "actual": 744
     },
     {
       "op": "add",
@@ -269,7 +269,7 @@
       "cycle": 19,
       "count": 30,
       "expected": 760,
-      "actual": 762
+      "actual": 784
     },
     {
       "op": "add",
@@ -283,7 +283,7 @@
       "cycle": 20,
       "count": 30,
       "expected": 800,
-      "actual": 802
+      "actual": 825
     },
     {
       "op": "add",
@@ -297,7 +297,7 @@
       "cycle": 21,
       "count": 30,
       "expected": 840,
-      "actual": 843
+      "actual": 865
     },
     {
       "op": "add",
@@ -311,7 +311,7 @@
       "cycle": 22,
       "count": 30,
       "expected": 880,
-      "actual": 883
+      "actual": 905
     },
     {
       "op": "add",
@@ -325,7 +325,7 @@
       "cycle": 23,
       "count": 30,
       "expected": 920,
-      "actual": 926
+      "actual": 945
     },
     {
       "op": "add",
@@ -339,7 +339,7 @@
       "cycle": 24,
       "count": 30,
       "expected": 960,
-      "actual": 967
+      "actual": 985
     },
     {
       "op": "add",
@@ -353,7 +353,7 @@
       "cycle": 25,
       "count": 30,
       "expected": 1000,
-      "actual": 1000
+      "actual": 1025
     },
     {
       "op": "add",
@@ -367,7 +367,7 @@
       "cycle": 26,
       "count": 30,
       "expected": 1040,
-      "actual": 1040
+      "actual": 1065
     },
     {
       "op": "add",
@@ -381,7 +381,7 @@
       "cycle": 27,
       "count": 30,
       "expected": 1080,
-      "actual": 1080
+      "actual": 1105
     },
     {
       "op": "add",
@@ -395,7 +395,7 @@
       "cycle": 28,
       "count": 30,
       "expected": 1120,
-      "actual": 1120
+      "actual": 1145
     },
     {
       "op": "add",
@@ -409,7 +409,7 @@
       "cycle": 29,
       "count": 30,
       "expected": 1160,
-      "actual": 1160
+      "actual": 1185
     },
     {
       "op": "add",
@@ -423,7 +423,7 @@
       "cycle": 30,
       "count": 30,
       "expected": 1200,
-      "actual": 1200
+      "actual": 1226
     },
     {
       "op": "add",
@@ -437,7 +437,7 @@
       "cycle": 31,
       "count": 30,
       "expected": 1240,
-      "actual": 1240
+      "actual": 1266
     },
     {
       "op": "add",
@@ -451,7 +451,7 @@
       "cycle": 32,
       "count": 30,
       "expected": 1280,
-      "actual": 1280
+      "actual": 1306
     },
     {
       "op": "add",
@@ -465,7 +465,7 @@
       "cycle": 33,
       "count": 30,
       "expected": 1320,
-      "actual": 1320
+      "actual": 1346
     },
     {
       "op": "add",
@@ -479,7 +479,7 @@
       "cycle": 34,
       "count": 30,
       "expected": 1360,
-      "actual": 1360
+      "actual": 1386
     },
     {
       "op": "add",
@@ -493,7 +493,7 @@
       "cycle": 35,
       "count": 30,
       "expected": 1400,
-      "actual": 1400
+      "actual": 1426
     },
     {
       "op": "add",
@@ -507,7 +507,7 @@
       "cycle": 36,
       "count": 30,
       "expected": 1440,
-      "actual": 1440
+      "actual": 1466
     },
     {
       "op": "add",
@@ -521,7 +521,7 @@
       "cycle": 37,
       "count": 30,
       "expected": 1480,
-      "actual": 1480
+      "actual": 1506
     },
     {
       "op": "add",
@@ -535,7 +535,7 @@
       "cycle": 38,
       "count": 30,
       "expected": 1520,
-      "actual": 1520
+      "actual": 1546
     },
     {
       "op": "add",
@@ -549,7 +549,7 @@
       "cycle": 39,
       "count": 30,
       "expected": 1560,
-      "actual": 1560
+      "actual": 1586
     },
     {
       "op": "add",
@@ -563,7 +563,7 @@
       "cycle": 40,
       "count": 30,
       "expected": 1600,
-      "actual": 1600
+      "actual": 1627
     },
     {
       "op": "add",
@@ -577,7 +577,7 @@
       "cycle": 41,
       "count": 30,
       "expected": 1640,
-      "actual": 1640
+      "actual": 1667
     },
     {
       "op": "add",
@@ -591,7 +591,7 @@
       "cycle": 42,
       "count": 30,
       "expected": 1680,
-      "actual": 1680
+      "actual": 1707
     },
     {
       "op": "add",
@@ -605,7 +605,7 @@
       "cycle": 43,
       "count": 30,
       "expected": 1720,
-      "actual": 1720
+      "actual": 1747
     },
     {
       "op": "add",
@@ -619,7 +619,7 @@
       "cycle": 44,
       "count": 30,
       "expected": 1760,
-      "actual": 1760
+      "actual": 1787
     },
     {
       "op": "add",
@@ -633,7 +633,7 @@
       "cycle": 45,
       "count": 30,
       "expected": 1800,
-      "actual": 1800
+      "actual": 1827
     },
     {
       "op": "add",
@@ -647,7 +647,7 @@
       "cycle": 46,
       "count": 30,
       "expected": 1840,
-      "actual": 1840
+      "actual": 1867
     },
     {
       "op": "add",
@@ -661,7 +661,7 @@
       "cycle": 47,
       "count": 30,
       "expected": 1880,
-      "actual": 1880
+      "actual": 1907
     },
     {
       "op": "add",
@@ -675,7 +675,7 @@
       "cycle": 48,
       "count": 30,
       "expected": 1920,
-      "actual": 1920
+      "actual": 1947
     },
     {
       "op": "add",
@@ -689,7 +689,7 @@
       "cycle": 49,
       "count": 30,
       "expected": 1960,
-      "actual": 1960
+      "actual": 1987
     },
     {
       "op": "add",
@@ -703,7 +703,7 @@
       "cycle": 50,
       "count": 30,
       "expected": 2000,
-      "actual": 2000
+      "actual": 2027
     },
     {
       "op": "add",
@@ -717,7 +717,7 @@
       "cycle": 51,
       "count": 30,
       "expected": 2040,
-      "actual": 2040
+      "actual": 2067
     },
     {
       "op": "add",
@@ -731,7 +731,7 @@
       "cycle": 52,
       "count": 30,
       "expected": 2080,
-      "actual": 2080
+      "actual": 2107
     },
     {
       "op": "add",
@@ -745,7 +745,7 @@
       "cycle": 53,
       "count": 30,
       "expected": 2120,
-      "actual": 2120
+      "actual": 2147
     },
     {
       "op": "add",
@@ -759,7 +759,7 @@
       "cycle": 54,
       "count": 30,
       "expected": 2160,
-      "actual": 2160
+      "actual": 2187
     },
     {
       "op": "add",
@@ -773,7 +773,7 @@
       "cycle": 55,
       "count": 30,
       "expected": 2200,
-      "actual": 2200
+      "actual": 2227
     },
     {
       "op": "add",
@@ -787,7 +787,7 @@
       "cycle": 56,
       "count": 30,
       "expected": 2240,
-      "actual": 2240
+      "actual": 2267
     },
     {
       "op": "add",
@@ -801,7 +801,7 @@
       "cycle": 57,
       "count": 30,
       "expected": 2280,
-      "actual": 2280
+      "actual": 2307
     },
     {
       "op": "add",
@@ -815,7 +815,7 @@
       "cycle": 58,
       "count": 30,
       "expected": 2320,
-      "actual": 2320
+      "actual": 2347
     },
     {
       "op": "add",
@@ -829,7 +829,7 @@
       "cycle": 59,
       "count": 30,
       "expected": 2360,
-      "actual": 2360
+      "actual": 2387
     },
     {
       "op": "add",
@@ -843,7 +843,7 @@
       "cycle": 60,
       "count": 30,
       "expected": 2400,
-      "actual": 2400
+      "actual": 2427
     },
     {
       "op": "add",
@@ -857,7 +857,7 @@
       "cycle": 61,
       "count": 30,
       "expected": 2440,
-      "actual": 2440
+      "actual": 2467
     },
     {
       "op": "add",
@@ -871,7 +871,7 @@
       "cycle": 62,
       "count": 30,
       "expected": 2480,
-      "actual": 2480
+      "actual": 2508
     },
     {
       "op": "add",
@@ -885,7 +885,7 @@
       "cycle": 63,
       "count": 30,
       "expected": 2520,
-      "actual": 2520
+      "actual": 2548
     },
     {
       "op": "add",
@@ -899,7 +899,7 @@
       "cycle": 64,
       "count": 30,
       "expected": 2560,
-      "actual": 2560
+      "actual": 2588
     },
     {
       "op": "add",
@@ -913,7 +913,7 @@
       "cycle": 65,
       "count": 30,
       "expected": 2600,
-      "actual": 2600
+      "actual": 2628
     },
     {
       "op": "add",
@@ -927,7 +927,7 @@
       "cycle": 66,
       "count": 30,
       "expected": 2640,
-      "actual": 2640
+      "actual": 2668
     },
     {
       "op": "add",
@@ -941,7 +941,7 @@
       "cycle": 67,
       "count": 30,
       "expected": 2680,
-      "actual": 2680
+      "actual": 2707
     },
     {
       "op": "add",
@@ -955,7 +955,7 @@
       "cycle": 68,
       "count": 30,
       "expected": 2720,
-      "actual": 2720
+      "actual": 2748
     },
     {
       "op": "add",
@@ -969,7 +969,7 @@
       "cycle": 69,
       "count": 30,
       "expected": 2760,
-      "actual": 2760
+      "actual": 2788
     },
     {
       "op": "add",
@@ -983,7 +983,7 @@
       "cycle": 70,
       "count": 30,
       "expected": 2800,
-      "actual": 2800
+      "actual": 2828
     },
     {
       "op": "add",
@@ -997,7 +997,7 @@
       "cycle": 71,
       "count": 30,
       "expected": 2840,
-      "actual": 2840
+      "actual": 2868
     },
     {
       "op": "add",
@@ -1011,7 +1011,7 @@
       "cycle": 72,
       "count": 30,
       "expected": 2880,
-      "actual": 2880
+      "actual": 2908
     },
     {
       "op": "add",
@@ -1025,7 +1025,7 @@
       "cycle": 73,
       "count": 30,
       "expected": 2920,
-      "actual": 2920
+      "actual": 2948
     },
     {
       "op": "add",
@@ -1039,21 +1039,21 @@
       "cycle": 74,
       "count": 30,
       "expected": 2960,
-      "actual": 2960
+      "actual": 2988
     },
     {
       "op": "add",
       "cycle": 75,
       "count": 3,
       "expected": 2963,
-      "actual": 2963
+      "actual": 2987
     },
     {
       "op": "delete",
       "cycle": 75,
       "count": 3,
       "expected": 2960,
-      "actual": 2960
+      "actual": 2985
     },
     {
       "op": "add",
@@ -1066,14 +1066,14 @@
   "final_doc_count": 5183,
   "all_operations_passed": false,
   "timing": {
-    "test_time_s": 1532.806,
-    "search_time_s": 23.278
+    "test_time_s": 3694.986,
+    "search_time_s": 11.126
   },
   "metrics": {
-    "map": 0.7047,
-    "ndcg@10": 0.7433,
-    "ndcg@100": 0.762,
-    "recall@10": 0.8583,
-    "recall@100": 0.9477
+    "map": 0.7052,
+    "ndcg@10": 0.7436,
+    "ndcg@100": 0.7624,
+    "recall@10": 0.859,
+    "recall@100": 0.951
   }
 }

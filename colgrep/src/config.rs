@@ -160,6 +160,16 @@ pub struct Config {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub relative_paths: Option<bool>,
 
+    /// Enable hybrid search (FTS5 keyword + ColBERT semantic fused with RRF).
+    /// Default: true (enabled). Set to false to use pure semantic search.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hybrid_search: Option<bool>,
+
+    /// Hybrid search alpha: balance between keyword (0.0) and semantic (1.0).
+    /// Default: 0.75 (favors semantic).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hybrid_alpha: Option<f32>,
+
     /// Extra directory/file patterns to ignore during indexing (on top of defaults)
     /// e.g., ["generated", "*.pb.go", "migrations"]
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -365,6 +375,38 @@ impl Config {
     /// Clear max parser recursion depth setting (revert to default).
     pub fn clear_max_recursion_depth(&mut self) {
         self.max_recursion_depth = None;
+    }
+
+    /// Check if hybrid search (FTS5 + ColBERT) is enabled.
+    /// Defaults to true (enabled).
+    pub fn use_hybrid_search(&self) -> bool {
+        self.hybrid_search.unwrap_or(true)
+    }
+
+    /// Set hybrid search mode
+    pub fn set_hybrid_search(&mut self, enabled: bool) {
+        self.hybrid_search = Some(enabled);
+    }
+
+    /// Clear hybrid search setting (revert to default: true/enabled)
+    pub fn clear_hybrid_search(&mut self) {
+        self.hybrid_search = None;
+    }
+
+    /// Get hybrid search alpha (keyword vs semantic balance).
+    /// Defaults to 0.75 (favors semantic).
+    pub fn get_hybrid_alpha(&self) -> f32 {
+        self.hybrid_alpha.unwrap_or(0.75)
+    }
+
+    /// Set hybrid search alpha (0.0 = pure keyword, 1.0 = pure semantic).
+    pub fn set_hybrid_alpha(&mut self, alpha: f32) {
+        self.hybrid_alpha = Some(alpha.clamp(0.0, 1.0));
+    }
+
+    /// Clear hybrid alpha setting (revert to default: 0.75).
+    pub fn clear_hybrid_alpha(&mut self) {
+        self.hybrid_alpha = None;
     }
 
     /// Get extra ignore patterns

@@ -373,6 +373,8 @@ pub fn cmd_search(
     exclude_patterns: &[String],
     exclude_dirs: &[String],
     code_only: bool,
+    no_fts: bool,
+    alpha: Option<f32>,
     pool_factor: Option<usize>,
     auto_confirm: bool,
 ) -> Result<()> {
@@ -400,6 +402,8 @@ pub fn cmd_search(
             exclude_patterns,
             exclude_dirs,
             code_only,
+            no_fts,
+            alpha,
             pool_factor,
             auto_confirm,
         ) {
@@ -777,6 +781,8 @@ fn search_single_path(
     exclude_patterns: &[String],
     exclude_dirs: &[String],
     code_only: bool,
+    no_fts: bool,
+    alpha: Option<f32>,
     pool_factor: Option<usize>,
     auto_confirm: bool,
 ) -> Result<Vec<colgrep::SearchResult>> {
@@ -1224,17 +1230,38 @@ fn search_single_path(
     // Request more results to allow for re-ranking with query boost and test function demotion
     let search_top_k = if code_only { top_k * 4 } else { top_k * 3 };
 
-    // When no -e flag is provided, run BOTH semantic search and hybrid search (query as text pattern)
+    // Resolve hybrid search: --semantic-only CLI flag overrides, then config, default is enabled
+    let config = colgrep::Config::load().unwrap_or_default();
+    let hybrid_disabled = if no_fts {
+        true
+    } else {
+        !config.use_hybrid_search()
+    };
+
+    // CLI --alpha overrides config, config overrides default (0.75)
+    let hybrid_alpha = alpha.unwrap_or_else(|| config.get_hybrid_alpha());
+
+    // Helper: run search with or without FTS5 hybrid fusion
+    let do_search =
+        |q: &str, k: usize, sub: Option<&[i64]>| -> Result<Vec<colgrep::SearchResult>> {
+            if hybrid_disabled {
+                searcher.search(q, k, sub)
+            } else {
+                searcher.search_hybrid(q, k, sub, hybrid_alpha)
+            }
+        };
+
+    // When no -e flag is provided, run BOTH semantic/hybrid search and text-pattern search
     // This ensures exact matches are found even if the vector database doesn't rank them highly
     let results = if let Some(pattern) = &text_pattern {
         // -e flag provided: use existing hybrid search logic
         // Enhance semantic query with -e pattern (strip regex metacharacters and dedupe tokens)
         let sanitized_pattern = strip_regex_for_semantic(pattern);
         let enhanced_query = merge_query_with_pattern(query, &sanitized_pattern);
-        searcher.search(&enhanced_query, search_top_k, subset.as_deref())?
+        do_search(&enhanced_query, search_top_k, subset.as_deref())?
     } else {
-        // 1. Run pure semantic search
-        let semantic_results = searcher.search(query, search_top_k, subset.as_deref())?;
+        // 1. Run semantic search (with FTS5 fusion if enabled)
+        let semantic_results = do_search(query, search_top_k, subset.as_deref())?;
 
         // 2. Run hybrid search: filter by query text, then semantic rank
         // Use fixed_strings mode to treat the query as a literal pattern
@@ -1256,7 +1283,7 @@ fn search_single_path(
             };
 
             if !hybrid_subset.is_empty() {
-                searcher.search(query, search_top_k, Some(&hybrid_subset))?
+                do_search(query, search_top_k, Some(&hybrid_subset))?
             } else {
                 vec![]
             }
