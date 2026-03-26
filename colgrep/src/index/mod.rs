@@ -903,6 +903,16 @@ impl IndexBuilder {
                     }
                     return Err(e.into());
                 }
+
+                // STEP 3: Index metadata into FTS5 for hybrid keyword search
+                if let Err(e) = next_plaid::text_search::index(
+                    index_path_str,
+                    &metadata,
+                    &doc_ids,
+                    &next_plaid::FtsTokenizer::Trigram,
+                ) {
+                    eprintln!("⚠️  FTS indexing failed (non-fatal): {}", e);
+                }
             }
         }
 
@@ -1394,6 +1404,16 @@ impl IndexBuilder {
                             eprintln!("⚠️  Rollback failed: {}", rollback_err);
                         }
                         return Err(e.into());
+                    }
+
+                    // STEP 3: Index metadata into FTS5 for hybrid keyword search
+                    if let Err(e) = next_plaid::text_search::index(
+                        index_path_str,
+                        &metadata,
+                        &doc_ids,
+                        &next_plaid::FtsTokenizer::Trigram,
+                    ) {
+                        eprintln!("⚠️  FTS indexing failed (non-fatal): {}", e);
                     }
                 }
             }
@@ -1926,6 +1946,16 @@ impl IndexBuilder {
                         eprintln!("⚠️  Rollback failed: {}", rollback_err);
                     }
                     return Err(e.into());
+                }
+
+                // STEP 3: Index metadata into FTS5 for hybrid keyword search
+                if let Err(e) = next_plaid::text_search::index(
+                    index_path_str,
+                    &metadata,
+                    &doc_ids,
+                    &next_plaid::FtsTokenizer::Trigram,
+                ) {
+                    eprintln!("⚠️  FTS indexing failed (non-fatal): {}", e);
                 }
             }
         }
@@ -2823,8 +2853,121 @@ impl Searcher {
         Ok(search_results)
     }
 
+    /// Hybrid search: ColBERT semantic + FTS5 keyword search fused with RRF.
+    ///
+    /// Falls back to pure semantic search if FTS5 index is not available.
+    pub fn search_hybrid(
+        &self,
+        query: &str,
+        top_k: usize,
+        subset: Option<&[i64]>,
+        alpha: f32,
+    ) -> Result<Vec<SearchResult>> {
+        // 1. Run semantic search (over-fetch for fusion)
+        let fetch_k = top_k * 3;
+
+        let query_embeddings =
+            crate::stderr::with_suppressed_stderr(|| self.model.encode_queries(&[query]))
+                .context("Failed to encode query")?;
+        let query_emb = &query_embeddings[0];
+
+        let params = SearchParameters {
+            top_k: fetch_k,
+            ..Default::default()
+        };
+        let semantic = self
+            .index
+            .search(query_emb, &params, subset)
+            .context("Semantic search failed")?;
+
+        // 2. Run FTS5 keyword search (non-fatal if unavailable)
+        // Sanitize query for FTS5 (wrap tokens in quotes, strip operators)
+        let sanitized_query = next_plaid::text_search::sanitize_fts5_query(query);
+        let keyword = if sanitized_query.is_empty() {
+            None
+        } else if let Some(sub) = subset {
+            next_plaid::text_search::search_filtered(
+                &self.index_path,
+                &sanitized_query,
+                fetch_k,
+                sub,
+            )
+            .ok()
+        } else {
+            next_plaid::text_search::search(&self.index_path, &sanitized_query, fetch_k).ok()
+        };
+
+        // 3. Fuse with RRF (or fall back to pure semantic)
+        let (fused_ids, fused_scores) = if let Some(kw) = keyword {
+            if kw.passage_ids.is_empty() {
+                // Keyword returned nothing — just use semantic
+                (semantic.passage_ids, semantic.scores)
+            } else {
+                next_plaid::text_search::fuse_rrf(
+                    &semantic.passage_ids,
+                    &kw.passage_ids,
+                    alpha,
+                    top_k,
+                )
+            }
+        } else {
+            // FTS not available — pure semantic
+            (semantic.passage_ids, semantic.scores)
+        };
+
+        // 4. Retrieve metadata for fused doc IDs
+        let metadata = filtering::get(&self.index_path, None, &[], Some(&fused_ids))
+            .context("Failed to retrieve metadata")?;
+
+        let search_results: Vec<SearchResult> = metadata
+            .into_iter()
+            .zip(fused_scores.iter())
+            .filter_map(|(mut meta, &score)| {
+                fix_sqlite_types(&mut meta);
+                serde_json::from_value::<CodeUnit>(meta)
+                    .ok()
+                    .map(|unit| SearchResult { unit, score })
+            })
+            .collect();
+
+        Ok(search_results)
+    }
+
     pub fn num_documents(&self) -> usize {
         self.index.num_documents()
+    }
+}
+
+/// Fix SQLite type conversions in metadata JSON.
+///
+/// SQLite stores booleans as integers (0/1) and arrays/objects as JSON strings.
+/// This function detects and converts them back generically:
+/// - Integer 0/1 with a `has_` or `is_` prefix → boolean
+/// - String values that parse as JSON arrays → array
+fn fix_sqlite_types(meta: &mut serde_json::Value) {
+    if let serde_json::Value::Object(ref mut obj) = meta {
+        let keys: Vec<String> = obj.keys().cloned().collect();
+        for key in keys {
+            // Convert 0/1 integers to booleans for has_*/is_* fields
+            if key.starts_with("has_") || key.starts_with("is_") {
+                if let Some(v) = obj.get(&key) {
+                    if let Some(n) = v.as_i64() {
+                        obj.insert(key, serde_json::Value::Bool(n != 0));
+                    }
+                }
+                continue;
+            }
+            // Convert JSON-encoded strings back to arrays
+            if let Some(serde_json::Value::String(s)) = obj.get(&key) {
+                if s.starts_with('[') {
+                    if let Ok(arr) = serde_json::from_str::<serde_json::Value>(s) {
+                        if arr.is_array() {
+                            obj.insert(key, arr);
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

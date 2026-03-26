@@ -42,10 +42,10 @@ use serde_json::Value;
 use crate::error::{Error, Result};
 
 /// Database file name within the index directory.
-const METADATA_DB_NAME: &str = "metadata.db";
+pub(crate) const METADATA_DB_NAME: &str = "metadata.db";
 
 /// Primary key column name (matches fast-plaid).
-const SUBSET_COLUMN: &str = "_subset_";
+pub(crate) const SUBSET_COLUMN: &str = "_subset_";
 
 /// Validate that a column name is a safe SQL identifier.
 ///
@@ -591,8 +591,21 @@ fn json_to_sql(value: &Value) -> Box<dyn ToSql> {
 }
 
 /// Get the path to the metadata database for an index.
-fn get_db_path(index_path: &str) -> std::path::PathBuf {
+pub(crate) fn get_db_path(index_path: &str) -> std::path::PathBuf {
     Path::new(index_path).join(METADATA_DB_NAME)
+}
+
+/// Open a SQLite connection with WAL mode and busy timeout.
+///
+/// WAL mode allows concurrent readers during writes. The busy timeout
+/// makes writers retry for up to 5 seconds instead of failing immediately.
+pub(crate) fn open_db(db_path: &std::path::Path) -> Result<Connection> {
+    let conn = Connection::open(db_path)?;
+    conn.pragma_update(None, "journal_mode", "WAL")
+        .map_err(|e| Error::Filtering(format!("Failed to set WAL mode: {}", e)))?;
+    conn.pragma_update(None, "busy_timeout", 5000)
+        .map_err(|e| Error::Filtering(format!("Failed to set busy_timeout: {}", e)))?;
+    Ok(conn)
 }
 
 /// Check if a metadata database exists for the given index.
@@ -688,7 +701,7 @@ pub fn create(index_path: &str, metadata: &[Value], doc_ids: &[i64]) -> Result<u
     }
 
     // Create connection
-    let conn = Connection::open(&db_path)?;
+    let conn = open_db(&db_path)?;
 
     // Build CREATE TABLE statement
     let mut col_defs = vec![format!("\"{}\" INTEGER PRIMARY KEY", SUBSET_COLUMN)];
@@ -714,7 +727,8 @@ pub fn create(index_path: &str, metadata: &[Value], doc_ids: &[i64]) -> Result<u
         )
     };
 
-    // Insert rows
+    // Insert rows (in a transaction for performance — single fsync)
+    conn.execute_batch("BEGIN")?;
     let mut stmt = conn.prepare(&insert_sql)?;
     for (i, item) in metadata.iter().enumerate() {
         let mut values: Vec<Box<dyn ToSql>> = vec![Box::new(doc_ids[i])];
@@ -732,6 +746,8 @@ pub fn create(index_path: &str, metadata: &[Value], doc_ids: &[i64]) -> Result<u
         let params: Vec<&dyn ToSql> = values.iter().map(|v| v.as_ref()).collect();
         stmt.execute(params_from_iter(params))?;
     }
+    drop(stmt);
+    conn.execute_batch("COMMIT")?;
 
     Ok(metadata.len())
 }
@@ -779,7 +795,7 @@ pub fn update(index_path: &str, metadata: &[Value], doc_ids: &[i64]) -> Result<u
         ));
     }
 
-    let conn = Connection::open(&db_path)?;
+    let conn = open_db(&db_path)?;
 
     // Get existing columns
     let mut existing_columns: Vec<String> = Vec::new();
@@ -842,7 +858,8 @@ pub fn update(index_path: &str, metadata: &[Value], doc_ids: &[i64]) -> Result<u
         )
     };
 
-    // Insert rows
+    // Insert rows (in a transaction for performance — single fsync)
+    conn.execute_batch("BEGIN")?;
     let mut stmt = conn.prepare(&insert_sql)?;
     for (i, item) in metadata.iter().enumerate() {
         let mut values: Vec<Box<dyn ToSql>> = vec![Box::new(doc_ids[i])];
@@ -859,6 +876,8 @@ pub fn update(index_path: &str, metadata: &[Value], doc_ids: &[i64]) -> Result<u
         let params: Vec<&dyn ToSql> = values.iter().map(|v| v.as_ref()).collect();
         stmt.execute(params_from_iter(params))?;
     }
+    drop(stmt);
+    conn.execute_batch("COMMIT")?;
 
     Ok(metadata.len())
 }
@@ -890,20 +909,22 @@ pub fn delete(index_path: &str, subset: &[i64]) -> Result<usize> {
         return Ok(0);
     }
 
-    let conn = Connection::open(&db_path)?;
+    let conn = open_db(&db_path)?;
 
     // Start transaction
     conn.execute("BEGIN", [])?;
 
     // Delete specified rows
-    let placeholders: Vec<String> = subset.iter().map(|_| "?".to_string()).collect();
+    let (in_clause, in_params, temp_table) = crate::text_search::build_in_clause(&conn, subset)?;
     let delete_sql = format!(
-        "DELETE FROM METADATA WHERE \"{}\" IN ({})",
-        SUBSET_COLUMN,
-        placeholders.join(", ")
+        "DELETE FROM METADATA WHERE \"{}\" {}",
+        SUBSET_COLUMN, in_clause
     );
-    let subset_refs: Vec<&dyn ToSql> = subset.iter().map(|v| v as &dyn ToSql).collect();
-    let deleted = conn.execute(&delete_sql, params_from_iter(subset_refs))?;
+    let param_refs: Vec<&dyn ToSql> = in_params.iter().map(|v| v.as_ref()).collect();
+    let deleted = conn.execute(&delete_sql, params_from_iter(param_refs))?;
+    if let Some(ref name) = temp_table {
+        crate::text_search::drop_temp_table(&conn, name);
+    }
 
     // Get column names (excluding _subset_)
     let mut columns: Vec<String> = Vec::new();
@@ -990,7 +1011,7 @@ pub fn where_condition(
         ));
     }
 
-    let conn = Connection::open(&db_path)?;
+    let conn = open_db(&db_path)?;
 
     // Validate condition against SQL injection
     let valid_columns = get_schema_columns(&conn)?;
@@ -1074,7 +1095,7 @@ pub fn where_condition_regexp(
             })?,
     );
 
-    let conn = Connection::open(&db_path)?;
+    let conn = open_db(&db_path)?;
 
     // Validate condition against SQL injection
     let valid_columns = get_schema_columns(&conn)?;
@@ -1151,7 +1172,7 @@ pub fn get(
         return Ok(Vec::new());
     }
 
-    let conn = Connection::open(&db_path)?;
+    let conn = open_db(&db_path)?;
 
     // Validate condition against SQL injection if provided
     if let Some(cond) = condition {
@@ -1181,16 +1202,13 @@ pub fn get(
         if ids.is_empty() {
             return Ok(Vec::new());
         }
-        let placeholders: Vec<String> = ids.iter().map(|_| "?".to_string()).collect();
+        let (in_clause, params, _temp) = crate::text_search::build_in_clause(&conn, ids)?;
         let query = format!(
-            "SELECT * FROM METADATA WHERE \"{}\" IN ({})",
-            SUBSET_COLUMN,
-            placeholders.join(", ")
+            "SELECT * FROM METADATA WHERE \"{}\" {}",
+            SUBSET_COLUMN, in_clause
         );
-        let params: Vec<Box<dyn ToSql>> = ids
-            .iter()
-            .map(|&id| Box::new(id) as Box<dyn ToSql>)
-            .collect();
+        // Note: temp table (if created) lives for the connection lifetime,
+        // cleaned up when conn is dropped.
         (query, params)
     } else {
         let query = format!("SELECT * FROM METADATA ORDER BY \"{}\"", SUBSET_COLUMN);
@@ -1334,7 +1352,7 @@ pub fn update_where(
         return Ok(0);
     }
 
-    let conn = Connection::open(&db_path)?;
+    let conn = open_db(&db_path)?;
 
     // Validate condition against SQL injection
     let valid_columns = get_schema_columns(&conn)?;
@@ -1363,6 +1381,23 @@ pub fn update_where(
         }
     }
 
+    // Find which _subset_ IDs will be affected (before the UPDATE)
+    let affected_ids: Vec<i64> = {
+        let affected_query = format!(
+            "SELECT \"{}\" FROM METADATA WHERE {}",
+            SUBSET_COLUMN, condition
+        );
+        let cond_params: Vec<Box<dyn ToSql>> = parameters.iter().map(json_to_sql).collect();
+        let cond_param_refs: Vec<&dyn ToSql> = cond_params.iter().map(|v| v.as_ref()).collect();
+
+        let mut affected_stmt = conn.prepare(&affected_query)?;
+        let rows = affected_stmt.query_map(params_from_iter(cond_param_refs), |row| {
+            row.get::<_, i64>(0)
+        })?;
+        let ids: Vec<i64> = rows.filter_map(|r| r.ok()).collect();
+        ids
+    };
+
     // Build SET clause
     let set_parts: Vec<String> = updates_obj
         .keys()
@@ -1381,6 +1416,12 @@ pub fn update_where(
 
     let updated = conn.execute(&query, params_from_iter(param_refs))?;
 
+    // Sync FTS5 index for affected rows.
+    // With WAL mode, the existing conn (reader) coexists with update_rows' writer.
+    if updated > 0 && !affected_ids.is_empty() {
+        crate::text_search::update_rows(index_path, &affected_ids)?;
+    }
+
     Ok(updated)
 }
 
@@ -1391,7 +1432,7 @@ pub fn count(index_path: &str) -> Result<usize> {
         return Ok(0);
     }
 
-    let conn = Connection::open(&db_path)?;
+    let conn = open_db(&db_path)?;
     let count: i64 = conn.query_row("SELECT COUNT(*) FROM METADATA", [], |row| row.get(0))?;
     Ok(count as usize)
 }
