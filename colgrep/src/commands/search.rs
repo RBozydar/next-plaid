@@ -481,16 +481,12 @@ pub fn cmd_search(
         };
 
         if !verbose {
-            // Non-verbose (compact) mode: show filepath:lines (score: X.XX) ordered by score
+            // Non-verbose (compact) mode: show filepath:lines ordered by score
             for result in &results {
                 let file_path = display_path(&result.unit.file, use_relative);
                 let start_line = result.unit.line;
                 let end_line = result.unit.end_line;
-                let score = result.score;
-                println!(
-                    "{}:{}-{} (score: {:.2})",
-                    file_path, start_line, end_line, score
-                );
+                println!("{}:{}-{}", file_path, start_line, end_line);
             }
         } else {
             // Verbose mode: full content grouped by file with syntax highlighting
