@@ -195,11 +195,12 @@ pub enum ExecutionProvider {
 fn configure_execution_provider(
     builder: SessionBuilder,
     provider: ExecutionProvider,
+    cuda_device_id: i32,
 ) -> Result<SessionBuilder> {
     match provider {
-        ExecutionProvider::Auto => configure_auto_provider(builder),
+        ExecutionProvider::Auto => configure_auto_provider(builder, cuda_device_id),
         ExecutionProvider::Cpu => Ok(builder),
-        ExecutionProvider::Cuda => configure_cuda(builder),
+        ExecutionProvider::Cuda => configure_cuda(builder, cuda_device_id),
         ExecutionProvider::TensorRT => configure_tensorrt(builder),
         ExecutionProvider::CoreML => configure_coreml(builder),
         ExecutionProvider::DirectML => configure_directml(builder),
@@ -207,16 +208,6 @@ fn configure_execution_provider(
     }
 }
 
-/// Get the CUDA logical device ID to use within this process.
-///
-/// CUDA_VISIBLE_DEVICES controls which GPUs are visible and remaps them to
-/// logical ordinals starting at 0. Since this library uses a single GPU per
-/// process, the correct default is always logical device 0 among the visible
-/// devices.
-#[cfg(feature = "cuda")]
-fn get_cuda_device_id() -> i32 {
-    0
-}
 
 /// Check if CPU-only mode is forced via environment variable.
 /// Only checks the canonical `NEXT_PLAID_FORCE_CPU` env var.
@@ -290,9 +281,12 @@ pub fn is_cuda_available() -> bool {
     false
 }
 
-fn configure_auto_provider(builder: SessionBuilder) -> Result<SessionBuilder> {
+fn configure_auto_provider(
+    builder: SessionBuilder,
+    cuda_device_id: i32,
+) -> Result<SessionBuilder> {
     if is_force_gpu() {
-        return configure_cuda(builder);
+        return configure_cuda(builder, cuda_device_id);
     }
 
     // Skip GPU providers entirely if CPU-only mode is forced
@@ -309,8 +303,8 @@ fn configure_auto_provider(builder: SessionBuilder) -> Result<SessionBuilder> {
     if !force_cpu {
         // Wrap CUDA initialization in catch_cuda_panic to handle panics from stub libraries
         // without printing the default panic message to stderr
+        let device_id = cuda_device_id;
         let cuda_result = catch_cuda_panic(std::panic::AssertUnwindSafe(|| {
-            let device_id = get_cuda_device_id();
             builder
                 .clone()
                 .with_execution_providers([CUDAExecutionProvider::default()
@@ -371,7 +365,7 @@ fn configure_auto_provider(builder: SessionBuilder) -> Result<SessionBuilder> {
 }
 
 #[cfg(feature = "cuda")]
-fn configure_cuda(builder: SessionBuilder) -> Result<SessionBuilder> {
+fn configure_cuda(builder: SessionBuilder, cuda_device_id: i32) -> Result<SessionBuilder> {
     // If CPU-only mode is forced, return CPU provider instead
     if is_force_cpu() {
         return Ok(builder);
@@ -379,8 +373,8 @@ fn configure_cuda(builder: SessionBuilder) -> Result<SessionBuilder> {
 
     // Wrap CUDA initialization in catch_cuda_panic to handle panics from stub/invalid libraries
     // without printing the default panic message to stderr
+    let device_id = cuda_device_id;
     let cuda_result = catch_cuda_panic(std::panic::AssertUnwindSafe(|| {
-        let device_id = get_cuda_device_id();
         builder
             .clone()
             .with_execution_providers([CUDAExecutionProvider::default()
@@ -674,6 +668,7 @@ pub struct ColbertBuilder {
     quantized: bool,
     query_length: Option<usize>,
     document_length: Option<usize>,
+    cuda_device_id: i32,
 }
 
 impl ColbertBuilder {
@@ -696,6 +691,7 @@ impl ColbertBuilder {
             quantized: false,
             query_length: None,
             document_length: None,
+            cuda_device_id: 0,
         }
     }
 
@@ -759,6 +755,15 @@ impl ColbertBuilder {
         self
     }
 
+    /// Set the CUDA device ID for GPU execution.
+    ///
+    /// This selects which GPU to use within the set of visible devices
+    /// (as determined by `CUDA_VISIBLE_DEVICES`). Defaults to 0.
+    pub fn with_device_id(mut self, device_id: i32) -> Self {
+        self.cuda_device_id = device_id;
+        self
+    }
+
     /// Build the Colbert model.
     pub fn build(self) -> Result<Colbert> {
         init_ort_runtime();
@@ -802,7 +807,8 @@ impl ColbertBuilder {
                 .with_memory_pattern(false)
                 .map_err(|e| anyhow::anyhow!("Failed to configure ONNX memory pattern: {e:?}"))?;
 
-            let builder = configure_execution_provider(builder, self.execution_provider)?;
+            let builder =
+                configure_execution_provider(builder, self.execution_provider, self.cuda_device_id)?;
 
             let session = builder
                 .commit_from_file(&onnx_path)

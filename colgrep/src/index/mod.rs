@@ -90,10 +90,52 @@ const LARGE_BATCH_THRESHOLD: usize = 10_000;
 /// Higher value = fewer embeddings = faster indexing and smaller index.
 const LARGE_BATCH_POOL_FACTOR: usize = 2;
 
+/// Minimum number of units per GPU to justify using that GPU.
+/// Below this threshold, the GPU initialization overhead exceeds the encoding benefit.
+const MIN_UNITS_PER_GPU: usize = 2000;
+
 /// Threshold for forcing CPU encoding even when CUDA is available.
 /// For small batches (< this many units), CPU is faster due to GPU initialization overhead.
 #[cfg(feature = "cuda")]
 const SMALL_BATCH_CPU_THRESHOLD: usize = 300;
+
+/// Detect the number of CUDA GPUs visible to this process.
+/// Respects CUDA_VISIBLE_DEVICES if set, otherwise queries nvidia-smi.
+#[cfg(feature = "cuda")]
+fn detect_gpu_count() -> usize {
+    // If CUDA_VISIBLE_DEVICES is set, use it as the source of truth
+    if let Ok(devices) = std::env::var("CUDA_VISIBLE_DEVICES") {
+        if devices.is_empty() || devices == "-1" {
+            return 0;
+        }
+        return devices.split(',').filter(|s| !s.trim().is_empty()).count();
+    }
+    // Otherwise query nvidia-smi for all GPUs on the system
+    std::process::Command::new("nvidia-smi")
+        .args(["--query-gpu=index", "--format=csv,noheader"])
+        .output()
+        .ok()
+        .map(|output| {
+            String::from_utf8_lossy(&output.stdout)
+                .lines()
+                .filter(|l| !l.trim().is_empty())
+                .count()
+        })
+        .unwrap_or(0)
+}
+
+/// Decide how many GPUs to use for encoding based on the number of units.
+/// Returns the number of GPUs to use (always >= 1 when CUDA is available).
+#[cfg(feature = "cuda")]
+fn choose_gpu_count(num_units: usize) -> usize {
+    let available = detect_gpu_count();
+    if available <= 1 {
+        return 1;
+    }
+    // Use as many GPUs as we can fill with MIN_UNITS_PER_GPU units each
+    let useful = (num_units / MIN_UNITS_PER_GPU).max(1);
+    useful.min(available)
+}
 
 #[derive(Debug)]
 pub struct UpdateStats {
@@ -176,6 +218,9 @@ fn wait_for_pending_update(handle: Option<std::thread::JoinHandle<Result<()>>>) 
 pub struct IndexBuilder {
     /// The model is lazily created only when needed for encoding
     model: Option<Colbert>,
+    /// Additional models for multi-GPU encoding (one per extra GPU)
+    #[cfg(feature = "cuda")]
+    extra_models: Vec<Colbert>,
     /// Builder parameters for lazy model creation
     model_path: PathBuf,
     quantized: bool,
@@ -212,6 +257,8 @@ impl IndexBuilder {
 
         Ok(Self {
             model: None, // Lazily created when needed
+            #[cfg(feature = "cuda")]
+            extra_models: Vec::new(),
             model_path: model_path.to_path_buf(),
             quantized,
             parallel_sessions,
@@ -357,6 +404,51 @@ impl IndexBuilder {
             };
 
             self.model = Some(model);
+
+            // Multi-GPU: create extra models on additional GPUs if beneficial
+            #[cfg(feature = "cuda")]
+            if execution_provider == ExecutionProvider::Cuda && self.extra_models.is_empty() {
+                let num_gpus = choose_gpu_count(num_units);
+                if num_gpus > 1 {
+                    eprintln!(
+                        "⚡ Using {} GPUs for encoding ({} units)",
+                        num_gpus, num_units
+                    );
+                    for gpu_id in 1..num_gpus {
+                        let extra = std::panic::catch_unwind(
+                            std::panic::AssertUnwindSafe(|| {
+                                crate::stderr::with_suppressed_stderr(|| {
+                                    Colbert::builder(&self.model_path)
+                                        .with_quantized(self.quantized)
+                                        .with_parallel(num_sessions)
+                                        .with_batch_size(batch)
+                                        .with_execution_provider(ExecutionProvider::Cuda)
+                                        .with_device_id(gpu_id as i32)
+                                        .build()
+                                })
+                            }),
+                        );
+
+                        match extra {
+                            Ok(Ok(m)) => self.extra_models.push(m),
+                            Ok(Err(e)) => {
+                                eprintln!(
+                                    "⚠️  Failed to load model on GPU {}: {}",
+                                    gpu_id, e
+                                );
+                                break;
+                            }
+                            Err(_) => {
+                                eprintln!(
+                                    "⚠️  Model load panicked on GPU {}, skipping",
+                                    gpu_id
+                                );
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
         }
         Ok(())
     }
@@ -1954,33 +2046,96 @@ impl IndexBuilder {
 
         let mut pending_update: Option<std::thread::JoinHandle<Result<()>>> = None;
 
+        // Collect all models for multi-GPU encoding
+        #[cfg(feature = "cuda")]
+        let num_gpus = 1 + self.extra_models.len();
+        #[cfg(not(feature = "cuda"))]
+        let num_gpus = 1usize;
+
         for (chunk_idx, unit_chunk) in sorted_units.chunks(PIPELINE_CHUNK_SIZE).enumerate() {
             // Build embedding text for this chunk
             let texts: Vec<String> = unit_chunk.iter().map(build_embedding_text).collect();
             let text_refs: Vec<&str> = texts.iter().map(|s| s.as_str()).collect();
 
-            // Encode in smaller batches within the chunk
-            let mut chunk_embeddings = Vec::new();
-            for batch in text_refs.chunks(encode_batch_size) {
-                // Check for interrupt before each encoding batch (immediate response)
-                if is_interrupted_outside_critical() {
-                    was_interrupted = true;
-                    break;
+            // Encode — split across GPUs if multiple are available
+            let mut chunk_embeddings: Vec<ndarray::Array2<f32>> = Vec::new();
+
+            if num_gpus > 1 {
+                // Multi-GPU: split texts into sub-slices and encode in parallel
+                #[cfg(feature = "cuda")]
+                {
+                    let chunk_encode_start = std::time::Instant::now();
+
+                    // Check for interrupt before starting
+                    if is_interrupted_outside_critical() {
+                        was_interrupted = true;
+                    }
+
+                    if !was_interrupted {
+                        // Split texts evenly across GPUs
+                        let per_gpu = (text_refs.len() + num_gpus - 1) / num_gpus;
+                        let gpu_slices: Vec<&[&str]> = text_refs.chunks(per_gpu).collect();
+
+                        let results: Vec<Result<Vec<ndarray::Array2<f32>>>> =
+                            std::thread::scope(|s| {
+                                let mut handles = Vec::new();
+
+                                for (gpu_idx, slice) in gpu_slices.iter().enumerate() {
+                                    let model: &Colbert = if gpu_idx == 0 {
+                                        self.model()
+                                    } else {
+                                        &self.extra_models[gpu_idx - 1]
+                                    };
+                                    let pool = effective_pool_factor;
+                                    let texts = *slice;
+
+                                    handles.push(s.spawn(move || {
+                                        model
+                                            .encode_documents(texts, pool)
+                                            .context("Failed to encode documents")
+                                    }));
+                                }
+
+                                handles.into_iter().map(|h| h.join().unwrap()).collect()
+                            });
+
+                        let batch_chars: usize = text_refs.iter().map(|s| s.len()).sum();
+                        for result in results {
+                            chunk_embeddings.extend(result?);
+                        }
+                        eta.record_batch(batch_chars, chunk_encode_start.elapsed());
+
+                        if let Some(ref pb) = pb {
+                            let progress =
+                                chunk_idx * PIPELINE_CHUNK_SIZE + chunk_embeddings.len();
+                            pb.set_position(progress.min(sorted_units.len()) as u64);
+                            pb.set_message(eta.eta_message());
+                        }
+                    }
                 }
+            } else {
+                // Single GPU: encode in smaller batches within the chunk
+                for batch in text_refs.chunks(encode_batch_size) {
+                    // Check for interrupt before each encoding batch (immediate response)
+                    if is_interrupted_outside_critical() {
+                        was_interrupted = true;
+                        break;
+                    }
 
-                let batch_chars: usize = batch.iter().map(|s| s.len()).sum();
-                let batch_start = std::time::Instant::now();
-                let batch_embeddings = self
-                    .model()
-                    .encode_documents(batch, effective_pool_factor)
-                    .context("Failed to encode documents")?;
-                eta.record_batch(batch_chars, batch_start.elapsed());
-                chunk_embeddings.extend(batch_embeddings);
+                    let batch_chars: usize = batch.iter().map(|s| s.len()).sum();
+                    let batch_start = std::time::Instant::now();
+                    let batch_embeddings = self
+                        .model()
+                        .encode_documents(batch, effective_pool_factor)
+                        .context("Failed to encode documents")?;
+                    eta.record_batch(batch_chars, batch_start.elapsed());
+                    chunk_embeddings.extend(batch_embeddings);
 
-                if let Some(ref pb) = pb {
-                    let progress = chunk_idx * PIPELINE_CHUNK_SIZE + chunk_embeddings.len();
-                    pb.set_position(progress.min(sorted_units.len()) as u64);
-                    pb.set_message(eta.eta_message());
+                    if let Some(ref pb) = pb {
+                        let progress = chunk_idx * PIPELINE_CHUNK_SIZE + chunk_embeddings.len();
+                        pb.set_position(progress.min(sorted_units.len()) as u64);
+                        pb.set_message(eta.eta_message());
+                    }
                 }
             }
 
