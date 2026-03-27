@@ -1166,7 +1166,8 @@ impl IndexBuilder {
         // 0. Clean up orphaned entries (files in index but not on disk)
         // This is expensive on large repos (fetches all metadata from SQLite),
         // so only run when deletions were detected or periodically as a safety net.
-        let should_cleanup = !plan.deleted.is_empty() || old_state.search_count.is_multiple_of(50);
+        let should_cleanup = !plan.deleted.is_empty()
+            || (old_state.search_count > 0 && old_state.search_count.is_multiple_of(50));
         let orphaned_deleted = if should_cleanup {
             self.cleanup_orphaned_entries(index_path_str)?
         } else {
@@ -3035,9 +3036,14 @@ impl Searcher {
 /// Fix SQLite type conversions in metadata JSON.
 ///
 /// SQLite stores booleans as integers (0/1) and arrays/objects as JSON strings.
-/// This function detects and converts them back generically:
-/// - Integer 0/1 with a `has_` or `is_` prefix → boolean
+/// This function detects and converts them back using naming conventions:
+/// - Integer fields with a `has_` or `is_` prefix → boolean
 /// - String values that parse as JSON arrays → array
+///
+/// Note: this is more general than the original hardcoded field list — it will
+/// convert *any* `has_`/`is_` integer field to bool, not just known ones.
+/// This is intentional: new metadata fields following the naming convention are
+/// handled automatically without code changes.
 fn fix_sqlite_types(meta: &mut serde_json::Value) {
     if let serde_json::Value::Object(ref mut obj) = meta {
         let keys: Vec<String> = obj.keys().cloned().collect();

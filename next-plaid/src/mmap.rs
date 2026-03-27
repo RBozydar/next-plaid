@@ -1156,48 +1156,52 @@ fn get_mtime(path: &Path) -> Result<f64> {
     Ok(duration.as_secs_f64())
 }
 
-/// Compute the NPY header size for a 1D array (without writing).
-fn npy_header_size_1d(len: usize, dtype: &str) -> usize {
-    let header_dict = format!(
-        "{{'descr': '{}', 'fortran_order': False, 'shape': ({},), }}",
-        dtype, len
-    );
+/// Build the NPY header dict string and compute the total header size (magic + version + len + padded dict).
+fn npy_header_layout(header_dict: &str) -> (usize, usize) {
     let header_len = header_dict.len();
     let padding = (64 - ((10 + header_len) % 64)) % 64;
-    10 + header_len + padding + 1 // +1 for the trailing newline
+    let total = 10 + header_len + padding + 1; // +1 for the trailing newline
+    (padding, total)
+}
+
+fn npy_header_dict_1d(len: usize, dtype: &str) -> String {
+    format!(
+        "{{'descr': '{}', 'fortran_order': False, 'shape': ({},), }}",
+        dtype, len
+    )
+}
+
+fn npy_header_dict_2d(nrows: usize, ncols: usize, dtype: &str) -> String {
+    format!(
+        "{{'descr': '{}', 'fortran_order': False, 'shape': ({}, {}), }}",
+        dtype, nrows, ncols
+    )
+}
+
+/// Compute the NPY header size for a 1D array (without writing).
+fn npy_header_size_1d(len: usize, dtype: &str) -> usize {
+    let dict = npy_header_dict_1d(len, dtype);
+    npy_header_layout(&dict).1
 }
 
 /// Compute the NPY header size for a 2D array (without writing).
 fn npy_header_size_2d(nrows: usize, ncols: usize, dtype: &str) -> usize {
-    let header_dict = format!(
-        "{{'descr': '{}', 'fortran_order': False, 'shape': ({}, {}), }}",
-        dtype, nrows, ncols
-    );
-    let header_len = header_dict.len();
-    let padding = (64 - ((10 + header_len) % 64)) % 64;
-    10 + header_len + padding + 1
+    let dict = npy_header_dict_2d(nrows, ncols, dtype);
+    npy_header_layout(&dict).1
 }
 
-/// Write NPY header for a 1D array
-fn write_npy_header_1d(writer: &mut impl Write, len: usize, dtype: &str) -> Result<usize> {
-    // Build header dict
-    let header_dict = format!(
-        "{{'descr': '{}', 'fortran_order': False, 'shape': ({},), }}",
-        dtype, len
-    );
-
-    // Pad to 64-byte alignment (NPY requirement)
-    let header_len = header_dict.len();
-    let padding = (64 - ((10 + header_len) % 64)) % 64;
+/// Write an NPY header (shared implementation for 1D and 2D).
+fn write_npy_header(writer: &mut impl Write, header_dict: &str) -> Result<usize> {
+    let (padding, total) = npy_header_layout(header_dict);
     let padded_header = format!("{}{}\n", header_dict, " ".repeat(padding));
 
-    // Write magic + version
+    // Write magic + version (v1.0)
     writer
         .write_all(NPY_MAGIC)
         .map_err(|e| Error::IndexLoad(format!("Failed to write NPY magic: {}", e)))?;
     writer
         .write_all(&[1, 0])
-        .map_err(|e| Error::IndexLoad(format!("Failed to write version: {}", e)))?; // v1.0
+        .map_err(|e| Error::IndexLoad(format!("Failed to write version: {}", e)))?;
 
     // Write header length (2 bytes for v1.0)
     let header_len_bytes = (padded_header.len() as u16).to_le_bytes();
@@ -1210,7 +1214,12 @@ fn write_npy_header_1d(writer: &mut impl Write, len: usize, dtype: &str) -> Resu
         .write_all(padded_header.as_bytes())
         .map_err(|e| Error::IndexLoad(format!("Failed to write header: {}", e)))?;
 
-    Ok(10 + padded_header.len())
+    Ok(total)
+}
+
+/// Write NPY header for a 1D array
+fn write_npy_header_1d(writer: &mut impl Write, len: usize, dtype: &str) -> Result<usize> {
+    write_npy_header(writer, &npy_header_dict_1d(len, dtype))
 }
 
 /// Write NPY header for a 2D array
@@ -1220,37 +1229,7 @@ fn write_npy_header_2d(
     ncols: usize,
     dtype: &str,
 ) -> Result<usize> {
-    // Build header dict
-    let header_dict = format!(
-        "{{'descr': '{}', 'fortran_order': False, 'shape': ({}, {}), }}",
-        dtype, nrows, ncols
-    );
-
-    // Pad to 64-byte alignment
-    let header_len = header_dict.len();
-    let padding = (64 - ((10 + header_len) % 64)) % 64;
-    let padded_header = format!("{}{}\n", header_dict, " ".repeat(padding));
-
-    // Write magic + version
-    writer
-        .write_all(NPY_MAGIC)
-        .map_err(|e| Error::IndexLoad(format!("Failed to write NPY magic: {}", e)))?;
-    writer
-        .write_all(&[1, 0])
-        .map_err(|e| Error::IndexLoad(format!("Failed to write version: {}", e)))?;
-
-    // Write header length
-    let header_len_bytes = (padded_header.len() as u16).to_le_bytes();
-    writer
-        .write_all(&header_len_bytes)
-        .map_err(|e| Error::IndexLoad(format!("Failed to write header len: {}", e)))?;
-
-    // Write header
-    writer
-        .write_all(padded_header.as_bytes())
-        .map_err(|e| Error::IndexLoad(format!("Failed to write header: {}", e)))?;
-
-    Ok(10 + padded_header.len())
+    write_npy_header(writer, &npy_header_dict_2d(nrows, ncols, dtype))
 }
 
 /// Information about a chunk file for merging
