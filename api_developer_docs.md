@@ -5,6 +5,7 @@
 - [Architecture Overview](#architecture-overview)
 - [Docker Image](#docker-image)
 - [Running Without Docker](#running-without-docker)
+- [Python SDK](#python-sdk)
 - [API Workflow](#api-workflow)
 - [Search Modes](#search-modes)
 - [Reranking](#reranking)
@@ -129,6 +130,218 @@ cargo build --release -p next-plaid-api --features "accelerate,model"
 ```
 
 Note: HuggingFace model auto-download (`org/model` format) is handled by `docker-entrypoint.sh` only. When running the binary directly, download the model files manually and pass the local path.
+
+---
+
+## Python SDK
+
+A Python client library (`next-plaid-client`) wraps the HTTP API with both sync and async clients.
+
+### Installation
+
+```bash
+pip install ./next-plaid-api/python-sdk
+```
+
+Only dependency is `httpx`.
+
+### Quick Start
+
+```python
+from next_plaid_client import NextPlaidClient, IndexConfig, SearchParams
+
+client = NextPlaidClient("http://localhost:8080")
+
+# Check server health
+health = client.health()
+print(f"Status: {health.status}, Model: {health.model}")
+```
+
+Or use as a context manager:
+
+```python
+with NextPlaidClient("http://localhost:8080") as client:
+    indices = client.list_indices()
+```
+
+### Create an Index
+
+```python
+client.create_index("my_docs", IndexConfig(
+    nbits=4,
+    fts_tokenizer="unicode61",
+    max_documents=10000,
+))
+```
+
+### Add Documents
+
+The `add()` method auto-detects whether you're passing text or pre-computed embeddings:
+
+```python
+# Text documents (server encodes them, requires model)
+client.add("my_docs",
+    documents=[
+        "Paris is the capital of France.",
+        "Berlin is the capital of Germany.",
+    ],
+    metadata=[
+        {"title": "France", "category": "geography", "text": "Paris is the capital of France."},
+        {"title": "Germany", "category": "geography", "text": "Berlin is the capital of Germany."},
+    ]
+)
+
+# With token pooling (reduces embeddings by factor of 2)
+client.add("my_docs", documents=["Long document..."], pool_factor=2)
+
+# Pre-computed embeddings
+client.add("my_docs", documents=[{"embeddings": [[0.1, 0.2], [0.3, 0.4]]}])
+```
+
+### Search
+
+```python
+# Semantic search (text queries, server encodes)
+results = client.search("my_docs", queries=["What is the capital of France?"])
+
+for qr in results.results:
+    for doc_id, score, meta in zip(qr.document_ids, qr.scores, qr.metadata):
+        print(f"  doc {doc_id}: {score:.3f} — {meta}")
+
+# With search parameters
+results = client.search("my_docs",
+    queries=["capital city"],
+    params=SearchParams(top_k=5, n_ivf_probe=16),
+)
+
+# Filtered search
+results = client.search("my_docs",
+    queries=["capital city"],
+    filter_condition="category = ?",
+    filter_parameters=["geography"],
+)
+
+# Hybrid search (semantic + keyword BM25)
+results = client.search("my_docs",
+    queries=["capital city"],
+    text_query=["France"],
+    alpha=0.75,
+    fusion="rrf",
+)
+
+# Keyword-only search (BM25 over metadata)
+results = client.keyword_search("my_docs", "machine learning")
+```
+
+### Reranking
+
+```python
+# Text inputs (server encodes)
+result = client.rerank(
+    query="What is the capital of France?",
+    documents=["Paris is the capital of France.", "Pizza is delicious."]
+)
+for r in result.results:
+    print(f"Document {r.index}: score {r.score:.2f}")
+
+# Pre-computed embeddings
+result = client.rerank(
+    query=[[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]],
+    documents=[
+        {"embeddings": [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]]},
+        {"embeddings": [[0.7, 0.8, 0.9], [0.1, 0.2, 0.3]]},
+    ]
+)
+```
+
+### Raw Encoding
+
+```python
+# Encode text to ColBERT embeddings
+response = client.encode(["some text"], input_type="document")
+# response.embeddings_b64, response.shapes available
+
+# Query encoding (with MASK token expansion)
+response = client.encode(["What is AI?"], input_type="query")
+```
+
+### Metadata Operations
+
+```python
+# Get all metadata
+meta = client.get_metadata("my_docs")
+
+# Get metadata by document IDs
+meta = client.get_metadata_by_ids("my_docs", document_ids=[0, 5, 10])
+
+# Query metadata with SQL condition
+result = client.query_metadata("my_docs",
+    condition="category = ? AND score > ?",
+    parameters=["science", 90]
+)
+
+# Update metadata
+client.update_metadata("my_docs",
+    condition="category = ?",
+    updates={"status": "reviewed", "updated_at": "2024-01-15"},
+    parameters=["geography"]
+)
+
+# Check which IDs exist
+check = client.check_metadata("my_docs", document_ids=[0, 5, 999])
+print(f"Existing: {check.existing_ids}, Missing: {check.missing_ids}")
+
+# Count metadata entries
+count = client.get_metadata_count("my_docs")
+```
+
+### Delete Documents
+
+```python
+# Delete by metadata filter
+client.delete("my_docs", condition="category = ?", parameters=["outdated"])
+
+# Delete an entire index
+client.delete_index("my_docs")
+```
+
+### Async Client
+
+The async client has the same API, using `await`:
+
+```python
+from next_plaid_client import AsyncNextPlaidClient
+
+async def main():
+    async with AsyncNextPlaidClient("http://localhost:8080") as client:
+        client.create_index("my_docs")
+        client.add("my_docs", documents=["Hello world"], metadata=[{"text": "Hello world"}])
+        results = await client.search("my_docs", queries=["hello"])
+```
+
+### Client Configuration
+
+```python
+client = NextPlaidClient(
+    base_url="http://localhost:8080",  # Server URL
+    timeout=30.0,                       # Request timeout in seconds
+    headers={"Authorization": "..."},   # Custom headers (e.g. for proxy auth)
+)
+```
+
+### Exceptions
+
+The SDK raises typed exceptions for error handling:
+
+| Exception | When |
+|---|---|
+| `IndexNotFoundError` | Index doesn't exist |
+| `IndexExistsError` | Index already exists on create |
+| `ValidationError` | Invalid request (bad params, dimension mismatch) |
+| `ModelNotLoadedError` | Text input but no model loaded on server |
+| `RateLimitError` | Rate limit exceeded |
+| `ConnectionError` | Can't connect or request timed out |
+| `NextPlaidError` | Base class for all SDK errors |
 
 ---
 
