@@ -349,15 +349,7 @@ def index_config(ctx, name, max_documents):
       next-plaid index config my_index --max-documents 10000
       next-plaid index config my_index --max-documents 0
     """
-<<<<<<< HEAD
-    if max_documents is not None and max_documents == 0:
-=======
-<<<<<<< HEAD
-    if max_documents is not None and max_documents == 0:
-=======
     if max_documents == 0:
->>>>>>> upstream/main
->>>>>>> origin/main
         max_documents = None
 
     try:
@@ -510,29 +502,7 @@ def document_delete(ctx, index_name, condition, param, yes, dry_run):
       next-plaid document delete my_index --condition "year < ?" --param 2020 --yes
       next-plaid document delete my_index --condition "id IN (?, ?)" --param 1 --param 2 --dry-run
     """
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
->>>>>>> origin/main
-    parameters = list(param) if param else None
-    # Try to parse numeric parameters
-    if parameters:
-        parsed = []
-        for p in parameters:
-            try:
-                parsed.append(int(p))
-            except ValueError:
-                try:
-                    parsed.append(float(p))
-                except ValueError:
-                    parsed.append(p)
-        parameters = parsed
-<<<<<<< HEAD
-=======
-=======
     parameters = _parse_params(param)
->>>>>>> upstream/main
->>>>>>> origin/main
 
     if dry_run:
         click.echo(f"dry-run: would delete from '{index_name}' where {condition}")
@@ -694,44 +664,11 @@ def search(
             centroid_threshold if centroid_threshold > 0 else None
         )
 
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
->>>>>>> origin/main
-    filter_parameters = None
-    if filter_param:
-        filter_parameters = []
-        for p in filter_param:
-            try:
-                filter_parameters.append(int(p))
-            except ValueError:
-                try:
-                    filter_parameters.append(float(p))
-                except ValueError:
-                    filter_parameters.append(p)
-
-    try:
-        with _get_client(ctx) as client:
-            if query_list and not text_query_list:
-                result = client.search(
-                    index_name,
-                    query_list,
-                    params=params,
-                    filter_condition=filter_condition,
-                    filter_parameters=filter_parameters,
-                    subset=subset_list,
-                )
-            elif text_query_list and not query_list:
-<<<<<<< HEAD
-=======
-=======
     filter_parameters = _parse_params(filter_param)
 
     try:
         with _get_client(ctx) as client:
             if text_query_list and not query_list:
->>>>>>> upstream/main
->>>>>>> origin/main
                 result = client.keyword_search(
                     index_name,
                     text_query_list,
@@ -883,27 +820,7 @@ def metadata_query(ctx, index_name, condition, param):
       next-plaid metadata query my_index --condition "category = ?" --param science
       next-plaid metadata query my_index --condition "score > ?" --param 90
     """
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
->>>>>>> origin/main
-    parameters = None
-    if param:
-        parameters = []
-        for p in param:
-            try:
-                parameters.append(int(p))
-            except ValueError:
-                try:
-                    parameters.append(float(p))
-                except ValueError:
-                    parameters.append(p)
-<<<<<<< HEAD
-=======
-=======
     parameters = _parse_params(param)
->>>>>>> upstream/main
->>>>>>> origin/main
 
     try:
         with _get_client(ctx) as client:
@@ -936,27 +853,7 @@ def metadata_get(ctx, index_name, ids, condition, param, limit):
       next-plaid metadata get my_index --condition "category = ?" --param science
       next-plaid metadata get my_index --condition "score > ?" --param 90 --limit 10
     """
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
->>>>>>> origin/main
-    parameters = None
-    if param:
-        parameters = []
-        for p in param:
-            try:
-                parameters.append(int(p))
-            except ValueError:
-                try:
-                    parameters.append(float(p))
-                except ValueError:
-                    parameters.append(p)
-<<<<<<< HEAD
-=======
-=======
     parameters = _parse_params(param)
->>>>>>> upstream/main
->>>>>>> origin/main
 
     doc_ids = list(ids) if ids else None
 
@@ -1007,27 +904,7 @@ def metadata_update(ctx, index_name, condition, param, updates_json, yes, dry_ru
       next-plaid metadata update my_index -c "score > ?" -p 90 --set '{"reviewed": true}' --dry-run
     """
     updates = _parse_json_param(updates_json, "--set")
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
->>>>>>> origin/main
-    parameters = None
-    if param:
-        parameters = []
-        for p in param:
-            try:
-                parameters.append(int(p))
-            except ValueError:
-                try:
-                    parameters.append(float(p))
-                except ValueError:
-                    parameters.append(p)
-<<<<<<< HEAD
-=======
-=======
     parameters = _parse_params(param)
->>>>>>> upstream/main
->>>>>>> origin/main
 
     if dry_run:
         click.echo(f"dry-run: would update '{index_name}' where {condition}")
