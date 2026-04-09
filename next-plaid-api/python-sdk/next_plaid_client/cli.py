@@ -7,7 +7,6 @@ following resource-verb patterns with layered --help and examples.
 
 import json
 import sys
-from typing import Optional
 
 import click
 
@@ -21,30 +20,17 @@ def _get_client(ctx: click.Context) -> NextPlaidClient:
     return NextPlaidClient(
         base_url=ctx.obj["url"],
         timeout=ctx.obj["timeout"],
-        headers=ctx.obj.get("headers") or None,
+        headers=ctx.obj.get("headers"),
     )
 
 
 def _output(ctx: click.Context, data, human_fn=None):
-    """Print output as JSON or human-readable text.
-
-    Args:
-        ctx: Click context with obj["json"] flag.
-        data: The data to output (dict, list, or dataclass with __dict__).
-        human_fn: Optional callable(data) -> str for human-readable output.
-    """
-    if ctx.obj.get("json"):
-        if hasattr(data, "__dict__"):
-            click.echo(json.dumps(_to_dict(data), indent=2))
-        else:
-            click.echo(json.dumps(data, indent=2))
-    elif human_fn:
+    """Print output as JSON or human-readable text."""
+    if human_fn and not ctx.obj.get("json"):
         click.echo(human_fn(data))
     else:
-        if hasattr(data, "__dict__"):
-            click.echo(json.dumps(_to_dict(data), indent=2))
-        else:
-            click.echo(json.dumps(data, indent=2))
+        serializable = _to_dict(data) if hasattr(data, "__dict__") else data
+        click.echo(json.dumps(serializable, indent=2))
 
 
 def _to_dict(obj):
@@ -68,6 +54,21 @@ def _read_stdin_or_fail(what: str) -> str:
             f"  Example: echo '...' | next-plaid ..."
         )
     return sys.stdin.read()
+
+def _parse_params(params: tuple) -> list | None:
+    """Parse CLI string params into typed values (int > float > str)."""
+    if not params:
+        return None
+    result = []
+    for p in params:
+        try:
+            result.append(int(p))
+        except ValueError:
+            try:
+                result.append(float(p))
+            except ValueError:
+                result.append(p)
+    return result
 
 
 def _parse_json_param(value: str, name: str):
@@ -348,7 +349,15 @@ def index_config(ctx, name, max_documents):
       next-plaid index config my_index --max-documents 10000
       next-plaid index config my_index --max-documents 0
     """
+<<<<<<< HEAD
     if max_documents is not None and max_documents == 0:
+=======
+<<<<<<< HEAD
+    if max_documents is not None and max_documents == 0:
+=======
+    if max_documents == 0:
+>>>>>>> upstream/main
+>>>>>>> origin/main
         max_documents = None
 
     try:
@@ -501,6 +510,10 @@ def document_delete(ctx, index_name, condition, param, yes, dry_run):
       next-plaid document delete my_index --condition "year < ?" --param 2020 --yes
       next-plaid document delete my_index --condition "id IN (?, ?)" --param 1 --param 2 --dry-run
     """
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+>>>>>>> origin/main
     parameters = list(param) if param else None
     # Try to parse numeric parameters
     if parameters:
@@ -514,6 +527,12 @@ def document_delete(ctx, index_name, condition, param, yes, dry_run):
                 except ValueError:
                     parsed.append(p)
         parameters = parsed
+<<<<<<< HEAD
+=======
+=======
+    parameters = _parse_params(param)
+>>>>>>> upstream/main
+>>>>>>> origin/main
 
     if dry_run:
         click.echo(f"dry-run: would delete from '{index_name}' where {condition}")
@@ -675,6 +694,10 @@ def search(
             centroid_threshold if centroid_threshold > 0 else None
         )
 
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+>>>>>>> origin/main
     filter_parameters = None
     if filter_param:
         filter_parameters = []
@@ -699,6 +722,16 @@ def search(
                     subset=subset_list,
                 )
             elif text_query_list and not query_list:
+<<<<<<< HEAD
+=======
+=======
+    filter_parameters = _parse_params(filter_param)
+
+    try:
+        with _get_client(ctx) as client:
+            if text_query_list and not query_list:
+>>>>>>> upstream/main
+>>>>>>> origin/main
                 result = client.keyword_search(
                     index_name,
                     text_query_list,
@@ -850,6 +883,10 @@ def metadata_query(ctx, index_name, condition, param):
       next-plaid metadata query my_index --condition "category = ?" --param science
       next-plaid metadata query my_index --condition "score > ?" --param 90
     """
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+>>>>>>> origin/main
     parameters = None
     if param:
         parameters = []
@@ -861,6 +898,12 @@ def metadata_query(ctx, index_name, condition, param):
                     parameters.append(float(p))
                 except ValueError:
                     parameters.append(p)
+<<<<<<< HEAD
+=======
+=======
+    parameters = _parse_params(param)
+>>>>>>> upstream/main
+>>>>>>> origin/main
 
     try:
         with _get_client(ctx) as client:
@@ -893,6 +936,10 @@ def metadata_get(ctx, index_name, ids, condition, param, limit):
       next-plaid metadata get my_index --condition "category = ?" --param science
       next-plaid metadata get my_index --condition "score > ?" --param 90 --limit 10
     """
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+>>>>>>> origin/main
     parameters = None
     if param:
         parameters = []
@@ -904,6 +951,12 @@ def metadata_get(ctx, index_name, ids, condition, param, limit):
                     parameters.append(float(p))
                 except ValueError:
                     parameters.append(p)
+<<<<<<< HEAD
+=======
+=======
+    parameters = _parse_params(param)
+>>>>>>> upstream/main
+>>>>>>> origin/main
 
     doc_ids = list(ids) if ids else None
 
@@ -954,6 +1007,10 @@ def metadata_update(ctx, index_name, condition, param, updates_json, yes, dry_ru
       next-plaid metadata update my_index -c "score > ?" -p 90 --set '{"reviewed": true}' --dry-run
     """
     updates = _parse_json_param(updates_json, "--set")
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+>>>>>>> origin/main
     parameters = None
     if param:
         parameters = []
@@ -965,6 +1022,12 @@ def metadata_update(ctx, index_name, condition, param, updates_json, yes, dry_ru
                     parameters.append(float(p))
                 except ValueError:
                     parameters.append(p)
+<<<<<<< HEAD
+=======
+=======
+    parameters = _parse_params(param)
+>>>>>>> upstream/main
+>>>>>>> origin/main
 
     if dry_run:
         click.echo(f"dry-run: would update '{index_name}' where {condition}")
