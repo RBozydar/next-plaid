@@ -82,7 +82,7 @@ Supported models:
     parser.add_argument(
         "--version",
         action="version",
-        version="%(prog)s 1.1.3",
+        version="%(prog)s 1.2.0",
     )
 
     args = parser.parse_args()
