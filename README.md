@@ -277,7 +277,7 @@ Apache-2.0
   title        = {NextPlaid, ColGREP: Multi-vector search, from database to coding agents.},
   url          = {https://github.com/lightonai/next-plaid},
   author       = {Sourty, Rapha\"{e}l},
-  contributors = {Dinaburg, Artem and Carron, Igor and Hsu, Chao-Chun (Joe) and Weitekamp, Raymond and R\k{a}czka, Szymon and Motliuk, Mark},
+  contributors = {Dinaburg, Artem and Oruc, Omer Faruk and Tripathi, Abhishek and Carron, Igor and Hsu, Chao-Chun (Joe) and Ellis, Jonathan and NickSdot and Weitekamp, Raymond and R\k{a}czka, Szymon and Motliuk, Mark and Chechenev, Ivan},
   year         = {2026},
 }
 
